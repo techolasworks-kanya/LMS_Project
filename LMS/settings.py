@@ -78,9 +78,13 @@ WSGI_APPLICATION = 'LMS.wsgi.application'
 
 import dj_database_url
 import os
+
+
+
+
 DATABASES = {
     'default': dj_database_url.config(
-        default=os.environ.get('DATABASE_URL'),
+        default=os.environ.get('postgresql://lms_db_s96a_user:1k5hutFnbWgaLqp05WFIR1WGG2zDoLV6@dpg-d453t7p5pdvs73c54f8g-a.singapore-postgres.render.com/lms_db_s96a'),
         conn_max_age=600,
         ssl_require=True
     )
