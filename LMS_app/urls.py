@@ -15,7 +15,18 @@ urlpatterns = [
     path('api/courses/<int:pk>', views.CourseDetailView.as_view(), name='course-retrieve-update-destroy'),
 
     #certfication API endpoints
-    path('api/certfications/', views.CertficationListCreateView.as_view(), name='certfication-create-list'),
+    path('api/certfications', views.CertficationListCreateView.as_view(), name='certfication-create-list'),
+
+
+    #user creatons/regstration
+    path('api/login', views.UserLoginView.as_view(), name='user-login'),
+    path('api/users_logout', views.UserLogoutView.as_view(), name='user-logout'),
+
+    path('api/users_register', views.CreateUserAPIView.as_view(), name='user-register'),
+
+
+
+
 
 
 

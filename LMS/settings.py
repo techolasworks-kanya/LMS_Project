@@ -29,7 +29,7 @@ ALLOWED_HOSTS = ['*']
 
 
 # Application definition
-
+AUTH_USER_MODEL = 'LMS_app.CustomUser'
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -40,6 +40,21 @@ INSTALLED_APPS = [
     'rest_framework'
 
 ]
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+}
+# Ensure CSRF is used (important for HTTP-only cookie auth)
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = True  # if using HTTPS
+CSRF_COOKIE_SECURE = True
+
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',  # Add this first-ish
@@ -73,7 +88,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'LMS.wsgi.application'
-AUTH_USER_MODEL = 'LMS_app.CustomUser'
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
@@ -83,12 +97,39 @@ import os
 
 
 
+# DATABASES = {
+#     'default': dj_database_url.config(
+#         default=os.environ.get('DATABASE_URL'),
+#         conn_max_age=600,
+#     )
+# }
+
+
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Default: Local PostgreSQL (for development)
 DATABASES = {
-    'default': dj_database_url.config(
-        default=os.environ.get('DATABASE_URL'),
-        conn_max_age=600,
-    )
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'DATA_LMS',        #
+        'USER': 'postgres',      
+        'PASSWORD': 'postgres',  
+        'HOST': 'localhost',
+        'PORT': '5432',
+    }
 }
+
+# If DATABASE_URL is set (e.g. on Render), override with that
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+if DATABASE_URL:
+    DATABASES['default'] = dj_database_url.parse(
+        DATABASE_URL,
+        conn_max_age=600,
+        ssl_require=True
+    )
 
 
 

@@ -57,7 +57,9 @@ class EnquiryListSerializer(serializers.ModelSerializer):
 
 
 
-class CreateAdminSerializer(serializers.ModelSerializer):
+
+
+class CreateUserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
         write_only=True,
         required=False,
@@ -65,32 +67,36 @@ class CreateAdminSerializer(serializers.ModelSerializer):
     )
 
     class Meta:
-        model = User
-        fields = ['name', 'email', 'password']
+        model = CustomUser
+        fields = ['name', 'email', 'job_title', 'password']
         extra_kwargs = {
             'email': {'required': True},
             'name': {'required': True},
+            'job_title': {'required': True},
         }
 
     def validate_password(self, value):
         raise serializers.ValidationError("Password cannot be set manually. It is auto-generated.")
 
     def create(self, validated_data):
-        validated_data.pop('password', None)  # Ignore any password sent
+        validated_data.pop('password', None)
         email = validated_data['email']
         name = validated_data['name']
+        job_title = validated_data['job_title']
 
-        # Generate secure password
-        password = User.generate_password()
+        # Auto-generate secure password
+        password = CustomUser.generate_password()
 
-        # Create admin user
-        user = User.objects.create_user(
+        # Create user
+        is_staff = True if job_title.lower() == 'admin' else False
+
+        user = CustomUser.objects.create_user(
             username=email,
             email=email,
             name=name,
+            job_title=job_title,
             password=password,
-            is_staff=True  # Admin access
+            is_staff=is_staff
         )
-        # Attach password to instance for response
         user.temp_password = password
         return user
