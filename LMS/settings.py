@@ -124,7 +124,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-AUTH_USER_MODEL = 'LMS_app.CustomUser'
 
 
 # Internationalization
