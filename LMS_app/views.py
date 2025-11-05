@@ -5,6 +5,7 @@ from .serializers import *
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.permissions import IsAuthenticated
 
 @api_view(['GET'])
 def server_running(request):
@@ -119,3 +120,27 @@ class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 
+class CreateAdminUserAPIView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        # Only superuser can create admin
+        if not request.user.is_superuser:
+            return Response(
+                {"error": "Only superadmin can create admin users."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = CreateAdminSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+            return Response({
+                "message": "Admin created successfully",
+                "admin": {
+                    "name": user.name,
+                    "email": user.email,
+                    "password": getattr(user, 'temp_password', None)  # generated password
+                }
+            }, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import course, Enquiry, certfication
+from .models import *
 
 class CertficationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -18,32 +18,6 @@ class CourseListSerializer(serializers.ModelSerializer):
         model = course
         fields = ['course_name', 'duration', 'course_fee']
         
-
-# class EnquiryCreateSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = Enquiry
-#         fields = '__all__'
-#         extra_kwargs = {
-#             'student_name': {'required': True},
-#             'date_of_birth': {'required': True},  
-#             'guardian_name': {'required': True}, 
-#             'phone1' : {'required': True},
-#             'qualification': {'required': True},
-#             'heard_from':{'required': True},
-
-#             'phone2': {'required': False},
-#             'email': {'required': False},
-#             'address': {'required': False},
-#             'gender': {'required': False},
-#             'university_college': {'required': False},
-#             'percentage': {'required': False},
-#             'year_of_passing': {'required': False},
-#             'course_interested': {'required': False},
-#             'flexible_timings': {'required': False},
-#             'action': {'required': False},
-#             'occupation': {'required': False},
-            
-#         } 
 class EnquiryCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Enquiry
@@ -81,3 +55,42 @@ class EnquiryListSerializer(serializers.ModelSerializer):
             
         } 
 
+
+
+class CreateAdminSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(
+        write_only=True,
+        required=False,
+        help_text="Auto-generated. Cannot be set manually."
+    )
+
+    class Meta:
+        model = User
+        fields = ['name', 'email', 'password']
+        extra_kwargs = {
+            'email': {'required': True},
+            'name': {'required': True},
+        }
+
+    def validate_password(self, value):
+        raise serializers.ValidationError("Password cannot be set manually. It is auto-generated.")
+
+    def create(self, validated_data):
+        validated_data.pop('password', None)  # Ignore any password sent
+        email = validated_data['email']
+        name = validated_data['name']
+
+        # Generate secure password
+        password = User.generate_password()
+
+        # Create admin user
+        user = User.objects.create_user(
+            username=email,
+            email=email,
+            name=name,
+            password=password,
+            is_staff=True  # Admin access
+        )
+        # Attach password to instance for response
+        user.temp_password = password
+        return user
