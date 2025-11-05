@@ -1,15 +1,24 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django .contrib.auth.models import AbstractUser
+import string
+import secrets
 
 # Create your models here.
-class CustomUser(AbstractUser):
-    name = models.CharField(max_length=150)
-    email = models.EmailField(unique=True)
+class CustomUser(AbstractUser): 
+    name = models.CharField(max_length=150, blank=True)
+    email = models.EmailField(unique=True, db_index=True)
+
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['username']
+
     def __str__(self):
-        return self.username
+        return self.email
 
-
+    @staticmethod
+    def generate_password(length=12):
+        chars = string.ascii_letters + string.digits + "!@#$%^&*"
+        return ''.join(secrets.choice(chars) for _ in range(length))
     
 class certfication(models.Model):
     certfication_name = models.CharField(max_length=100)
