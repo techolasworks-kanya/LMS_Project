@@ -37,27 +37,41 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles','LMS_app','corsheaders', 
-    'rest_framework'
-
+    'rest_framework','rest_framework_simplejwt'
 ]
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
+        'LMS.auth_backend.CookieJWTAuthentication',  # ← CORRECT
     ],
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
-    ],
+        
+    
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.AllowAny',
+    ),
 }
-# Ensure CSRF is used (important for HTTP-only cookie auth)
-CSRF_COOKIE_HTTPONLY = True
-SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SECURE = True  # if using HTTPS
-CSRF_COOKIE_SECURE = True
+
+
+
+ 
+# ———— SimpleJWT Config ————
+from datetime import timedelta
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=36500),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': True,
+    'AUTH_COOKIE': 'access_token',           # ← Read from cookie
+    'AUTH_COOKIE_REFRESH': 'refresh_token',  # ← Optional
+    'AUTH_COOKIE_SECURE': False,             # True in production
+    'AUTH_COOKIE_HTTP_ONLY': True,
+    'AUTH_COOKIE_SAME_SITE': 'Lax',
+}
+
+# ———— Custom JWT Auth from Cookie (Inline!) ————
 
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',  # Add this first-ish
+    'corsheaders.middleware.CorsMiddleware',  
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',

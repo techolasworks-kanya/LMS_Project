@@ -7,7 +7,6 @@ urlpatterns = [
     path('', server_running, name='server-running'),
 
     #enquiry API endpoints
-    # path('api/enquiries/', views.EnquiryListCreateView.as_view(), name='enquiry-create-list'),
     path('api/enquiries', views.EnquiryListCreateView.as_view(), name='enquiry-create-list'),
     path('api/enquiries/<int:pk>', views.EnquiryDetailView.as_view(), name='enquiry-retrieve-update-destroy'),
 
@@ -20,7 +19,9 @@ urlpatterns = [
 
     #user creatons/regstration
     path('api/login', views.UserLoginView.as_view(), name='user-login'),
-    path('api/users_logout', views.UserLogoutView.as_view(), name='user-logout'),
+    path('api/reset-password', views.ResetPasswordView.as_view(), name='reset_password'),
+    path('api/logout', views.UserLogoutView.as_view(), name='user-logout'),
+    path('api/token/refresh', views.TokenRefreshView.as_view()),
 
     path('api/users_register', views.CreateUserAPIView.as_view(), name='user-register'),
 

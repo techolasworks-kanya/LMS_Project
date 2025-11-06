@@ -8,55 +8,147 @@ from rest_framework.decorators import api_view
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import authenticate, login
 from rest_framework.permissions import AllowAny
-from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import ensure_csrf_cookie
+# from django.utils.decorators import method_decorator
 from django.contrib.auth import logout
-from django.middleware import csrf
+
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.views import APIView  
+
 
 @api_view(['GET'])
 def server_running(request):
     return Response({"message": "Server running"})
 
+# from django.middleware.csrf import get_token as csrf_get_token
 
-class UserLoginView(generics.GenericAPIView):
+# class UserLoginView(APIView):
+#     permission_classes = [AllowAny]
+
+#     def post(self, request):
+#         email = request.data.get('email')
+#         password = request.data.get('password')
+
+#         user = authenticate(request, email=email, password=password)
+#         if not user:
+#             return Response({"error": "Invalid credentials"}, status=401)
+
+#         refresh = RefreshToken.for_user(user)
+#         access_token = str(refresh.access_token)
+#         refresh_token = str(refresh)
+
+#         response = Response({
+#             "message": f"{'Superadmin' if user.is_superuser else user.job_title or 'User'} logged in",
+#             "email": user.email,
+#             "job_title": user.job_title,
+#             "is_superuser": user.is_superuser,
+#         })
+
+#         response.set_cookie('access_token', access_token, httponly=True, max_age=86400)
+#         response.set_cookie('refresh_token', refresh_token, httponly=True, max_age=604800)
+
+#         return response
+
+class UserLoginView(APIView):
     permission_classes = [AllowAny]
 
-    @method_decorator(ensure_csrf_cookie)
     def post(self, request):
         email = request.data.get('email')
         password = request.data.get('password')
 
         user = authenticate(request, email=email, password=password)
-        if user is None:
-            return Response({"error": "Invalid email or password"}, status=status.HTTP_401_UNAUTHORIZED)
+        if not user:
+            return Response({"error": "Invalid credentials"}, status=401)
 
-        login(request, user)
+        # ----- 1. Detect first login via temp_password attribute -----
+        is_first_login = hasattr(user, 'temp_password') and user.temp_password is not None
 
-        # Manually add CSRF token to response (so Postman can see it)
-        csrf_token = csrf.get_token(request)
+        # Generate tokens
+        refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
 
-        return Response({
-            "message": f"{'Superadmin' if user.is_superuser else user.job_title or 'User'} logged in successfully",
+        # Build response
+        role = 'Superadmin' if user.is_superuser else (user.job_title or 'User')
+        response_data = {
+            "message": f"{role} logged in successfully",
             "email": user.email,
             "job_title": user.job_title,
-            "is_superuser": user.is_superuser,
-            "csrf_token": csrf_token  # helpful for Postman testing
-        }, status=status.HTTP_200_OK)
+            "reset_password_required":True if is_first_login else False,
+            # "is_superuser": user.is_superuser,
+        }
 
+        # Add reset-password flag only on first login
+        if is_first_login:
+            response_data["reset_password_required"] = True
+            response_data["message"] = "Login successful. Please reset your password."
 
-class UserLogoutView(generics.GenericAPIView):
+        response = Response(response_data, status=200)
+
+        # Set HttpOnly cookies
+        response.set_cookie('access_token', access_token, httponly=True, samesite='Lax', max_age=86400)
+        response.set_cookie('refresh_token', refresh_token, httponly=True, samesite='Lax', max_age=604800)
+
+        return response
+    
+
+class ResetPasswordView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        logout(request)
-        return Response({"message": "Logged out successfully"}, status=status.HTTP_200_OK)
+        old_password = request.data.get('old_password')
+        new_password = request.data.get('new_password')
+
+        # Verify old password
+        if not request.user.check_password(old_password):
+            return Response({"error": "Current password is incorrect"}, status=400)
+
+        # Set new password
+        request.user.set_password(new_password)
+        request.user.temp_password = None   # <-- clear flag
+        request.user.save()
+
+        # Issue fresh tokens
+        refresh = RefreshToken.for_user(request.user)
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
+
+        response = Response({"message": "Password changed successfully"}, status=200)
+        response.set_cookie('access_token', access_token, httponly=True, samesite='Lax', max_age=86400)
+        response.set_cookie('refresh_token', refresh_token, httponly=True, samesite='Lax', max_age=604800)
+
+        return response
+
+class TokenRefreshView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        refresh_token = request.COOKIES.get('refresh_token')
+        if not refresh_token:
+            return Response({"error": "No refresh token"}, status=401)
+
+        try:
+            refresh = RefreshToken(refresh_token)
+            access_token = str(refresh.access_token)
+
+            response = Response({"message": "Token refreshed"})
+            response.set_cookie('access_token', access_token, httponly=True, samesite='Lax', max_age=86400)
+            return response
+        except:
+            return Response({"error": "Invalid refresh token"}, status=401)
 
 
+class UserLogoutView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        response = Response({"message": "Logged out successfully"})
+        response.delete_cookie('access_token')
+        response.delete_cookie('refresh_token')
+        return response
 class CreateUserAPIView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        # ✅ Only superadmin can create users/admins
         if not request.user.is_superuser:
             return Response(
                 {"error": "Only superadmin can create users or admins."},
@@ -138,38 +230,66 @@ class CourseDetailView(generics.RetrieveUpdateDestroyAPIView):
         return response
 
 # Enquiry
+# class EnquiryListCreateView(generics.ListCreateAPIView):
+#     queryset = Enquiry.objects.all()
+#     permission_classes = [IsAuthenticated]
+
+#     def get_permissions(self):
+#         # Allow anyone to create enquiries (optional)
+#         if self.request.method == 'POST':
+#             return []
+#         return [IsAuthenticated()]
+
+#     def get_serializer_class(self):
+#         if self.request.method == 'POST':
+#             return EnquiryCreateSerializer
+#         return EnquiryListSerializer
+
+#     def get_queryset(self):
+#         user = self.request.user
+#         # ✅ Only admins can view all enquiries
+#         if user.is_superuser or (user.job_title and user.job_title.lower() == "admin"):
+#             return Enquiry.objects.all()
+#         # ✅ Normal users can view their own enquiries (optional)
+#         return Enquiry.objects.none()
+
+#     def create(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         self.perform_create(serializer)
+#         headers = self.get_success_headers(serializer.data)
+#         return Response(
+#             {"status": "Enquiry created successfully.", "data": serializer.data},
+#             status=status.HTTP_201_CREATED,
+#             headers=headers
+#         )
 class EnquiryListCreateView(generics.ListCreateAPIView):
     queryset = Enquiry.objects.all()
     permission_classes = [IsAuthenticated]
 
     def get_permissions(self):
-        # Allow anyone to create enquiries (optional)
         if self.request.method == 'POST':
-            return []
+            return []  # anyone can create
         return [IsAuthenticated()]
 
     def get_serializer_class(self):
-        if self.request.method == 'POST':
-            return EnquiryCreateSerializer
-        return EnquiryListSerializer
+        return EnquiryCreateSerializer if self.request.method == 'POST' else EnquiryListSerializer
 
     def get_queryset(self):
         user = self.request.user
-        # ✅ Only admins can view all enquiries
-        if user.is_superuser or (user.job_title and user.job_title.lower() == "admin"):
-            return Enquiry.objects.all()
-        # ✅ Normal users can view their own enquiries (optional)
-        return Enquiry.objects.none()
+        # Superadmin & Admin → see all
+        if user.is_superuser or getattr(user, '_created_by_superadmin', False):
+            return Enquiry.objects.all().order_by('-enquiry_date')
+        # Normal users → see only enquiries they created (via email match)
+        return Enquiry.objects.filter(email=user.email)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
-        headers = self.get_success_headers(serializer.data)
         return Response(
-            {"status": "Enquiry created successfully.", "data": serializer.data},
-            status=status.HTTP_201_CREATED,
-            headers=headers
+            {"status": "Enquiry created successfully", "data": serializer.data},
+            status=status.HTTP_201_CREATED
         )
 
 
