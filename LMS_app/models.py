@@ -65,6 +65,7 @@ class Enquiry(models.Model):
         ('call', 'Call'),
         ('referral', 'Referral'),
         ('social media', 'Social Media'),
+        ('website', 'Website')
     ]
     heard_from = models.CharField(max_length=20, choices=HEARD_FROM_CHOICES, default='walk in')
     course_interested = models.ForeignKey(course, on_delete=models.CASCADE,null=True, blank=True)
@@ -80,6 +81,12 @@ class Enquiry(models.Model):
     def __str__(self):
         return self.student_name
 
-    
+#follow-up actions
 
-   
+# class FollowUpAction(models.Model):
+#     enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE, related_name='follow_up_actions')
+#     action = models.CharField(max_length=255)
+#     action_date = models.DateField(auto_now_add=True)
+
+#     def __str__(self):
+#         return f"Action for {self.enquiry.student_name} on {self.action_date}"
