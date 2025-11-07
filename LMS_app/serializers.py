@@ -25,20 +25,41 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'student_name':          {'required': True},
             'phone1':                {'required': True},
-         
             'educational_qualification': {'required': True},
             'heard_from':            {'required': True},
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Auto-make all other fields optional
-        required_fields = self.Meta.extra_kwargs.keys()
-        for field_name, field in self.fields.items():
-            if field_name not in required_fields:
+        required = set(self.Meta.extra_kwargs.keys())
+        for name, field in self.fields.items():
+            if name not in required:
                 field.required = False
-                if hasattr(field, 'allow_blank'):
-                    field.allow_blank = True
+                field.allow_blank = True
+                field.allow_null = True
+
+    # Override to_cleaned_data to convert empty strings to None
+    def to_internal_value(self, data):
+        # Make a mutable copy
+        data = data.copy()
+
+        # List of fields that should be null if blank
+        nullable_fields = [
+            'occupation', 'phone2', 'address', 'gender',
+            'university_college', 'percentage', 'year_of_passing',
+            'flexible_timings', 'course_interested','date_of_birth','guardian_name'
+
+        ]
+
+        for field in nullable_fields:
+            if field in data:
+                value = data[field]
+                if value == '' or value is None:
+                    data[field] = None
+                else:
+                    data[field] = value
+
+        return super().to_internal_value(data)
 
 class EnquiryListSerializer(serializers.ModelSerializer):
      class Meta:
