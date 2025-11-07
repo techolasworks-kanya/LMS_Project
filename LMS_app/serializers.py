@@ -18,54 +18,132 @@ class CourseListSerializer(serializers.ModelSerializer):
         model = course
         fields = ['course_name', 'duration', 'course_fee']
         
+# class EnquiryCreateSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Enquiry
+#         fields = '__all__'
+#         extra_kwargs = {
+#             'student_name':          {'required': True},
+#             'phone1':                {'required': True},
+#             'educational_qualification': {'required': True},
+#             'heard_from':            {'required': True},
+#         }
+
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         required = set(self.Meta.extra_kwargs.keys())
+#         for name, field in self.fields.items():
+#             if name not in required:
+#                 field.required = False
+#                 field.allow_blank = True
+#                 field.allow_null = True
+
+#     # Override to_cleaned_data to convert empty strings to None
+#     def to_internal_value(self, data):
+#         # Make a mutable copy
+#         data = data.copy()
+
+#         # List of fields that should be null if blank
+#         nullable_fields = [
+#             'occupation', 'phone2', 'address', 'gender',
+#             'university_college', 'percentage', 'year_of_passing',
+#             'flexible_timings', 'course_interested','date_of_birth','guardian_name'
+
+#         ]
+
+#         for field in nullable_fields:
+#             if field in data:
+#                 value = data[field]
+#                 if value == '' or value is None:
+#                     data[field] = None
+#                 else:
+#                     data[field] = value
+
+#         return super().to_internal_value(data)
 class EnquiryCreateSerializer(serializers.ModelSerializer):
+    course_interested_input = serializers.CharField(
+        source='course_interested',      # maps to the FK field
+        required=False,
+        allow_blank=True,
+        write_only=True,
+        help_text="Course name (e.g. 'Python Full Stack') or ID (e.g. 4)"
+    )
+
     class Meta:
         model = Enquiry
         fields = '__all__'
         extra_kwargs = {
-            'student_name':          {'required': True},
-            'phone1':                {'required': True},
+            'student_name': {'required': True},
+            'phone1': {'required': True},
             'educational_qualification': {'required': True},
-            'heard_from':            {'required': True},
+            'heard_from': {'required': True},
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        required = set(self.Meta.extra_kwargs.keys())
+        required = {'student_name', 'phone1', 'educational_qualification', 'heard_from'}
         for name, field in self.fields.items():
             if name not in required:
                 field.required = False
                 field.allow_blank = True
                 field.allow_null = True
 
-    # Override to_cleaned_data to convert empty strings to None
     def to_internal_value(self, data):
-        # Make a mutable copy
         data = data.copy()
 
-        # List of fields that should be null if blank
         nullable_fields = [
             'occupation', 'phone2', 'address', 'gender',
             'university_college', 'percentage', 'year_of_passing',
-            'flexible_timings', 'course_interested','date_of_birth','guardian_name'
-
+            'flexible_timings', 'date_of_birth', 'guardian_name', 'email'
         ]
+        for f in nullable_fields:
+            if f in data and data[f] in ['', None]:
+                data[f] = None
 
-        for field in nullable_fields:
-            if field in data:
-                value = data[field]
-                if value == '' or value is None:
-                    data[field] = None
+        raw_course = data.pop('course_interested_input', None)
+
+        if raw_course is not None:
+            raw_course = str(raw_course).strip()
+
+            if raw_course == '':
+                data['course_interested'] = None
+            else:
+                if raw_course.isdigit():
+                    try:
+                        course_obj = course.objects.get(pk=int(raw_course))
+                        data['course_interested'] = course_obj
+                    except course.DoesNotExist:
+                        raise serializers.ValidationError({
+                            'course_interested_input': f'Course with ID {raw_course} not found.'
+                        })
                 else:
-                    data[field] = value
+                    try:
+                        course_obj = course.objects.get(course_name__iexact=raw_course)
+                        data['course_interested'] = course_obj
+                    except course.DoesNotExist:
+                        raise serializers.ValidationError({
+                            'course_interested_input': f'Course "{raw_course}" not found.'
+                        })
 
         return super().to_internal_value(data)
 
+        
 class EnquiryListSerializer(serializers.ModelSerializer):
-     class Meta:
+  
+    course_interested = serializers.CharField(
+        source='course_interested.course_name',  
+        read_only=True,
+        allow_null=True
+    )
+
+    class Meta:
         model = Enquiry
-        fields = ['student_name', 'enquiry_date', 'course_interested',
-                  'heard_from']
+        fields = [
+            'student_name',
+            'enquiry_date',
+            'course_interested',   
+            'heard_from',
+        ]
         
 
 
