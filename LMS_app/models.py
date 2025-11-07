@@ -83,19 +83,19 @@ class Enquiry(models.Model):
 
 #follow-up actions
 
-class FollowUpAction(models.Model):
-    enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE, related_name='follow_up_actions')
-    enquiry_source = models.CharField(max_length=20, editable=False)
-    guardian_occupation = models.CharField(max_length=100, blank=True, null=True)
-    STATUS_CHOICES = [
-        ('new', 'New'),
-        ('hot_lead', 'Hot Lead'),
-        ('not_interested', 'Not Interested'),
-    ]
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
-    remarks = models.TextField(blank=True, null=True)
-    next_followup_date = models.DateField(null=True, blank=True) 
-    
+# class FollowUpAction(models.Model):
+#     enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE, related_name='follow_up_actions')
+#     enquiry_source = models.CharField(max_length=20, editable=False)
+#     guardian_occupation = models.CharField(max_length=100, blank=True, null=True)
+#     STATUS_CHOICES = [
+#         ('new', 'New'),
+#         ('hot_lead', 'Hot Lead'),
+#         ('not_interested', 'Not Interested'),
+#     ]
+#     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
+#     remarks = models.TextField(blank=True, null=True)
+#     next_followup_date = models.DateField(null=True, blank=True) 
+
    
     
 
