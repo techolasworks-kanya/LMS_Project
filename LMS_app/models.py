@@ -83,10 +83,10 @@ class Enquiry(models.Model):
 
 #follow-up actions
 
-# class FollowUpAction(models.Model):
-#     enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE, related_name='follow_up_actions')
-#     action = models.CharField(max_length=255)
-#     action_date = models.DateField(auto_now_add=True)
+class FollowUpAction(models.Model):
+    enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE, related_name='follow_up_actions')
+    action = models.CharField(max_length=255)
+    action_date = models.DateField(auto_now_add=True)
 
-#     def __str__(self):
-#         return f"Action for {self.enquiry.student_name} on {self.action_date}"
+    def __str__(self):
+        return f"Action for {self.enquiry.student_name} on {self.action_date}"

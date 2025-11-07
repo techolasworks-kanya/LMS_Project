@@ -19,34 +19,7 @@ from rest_framework.views import APIView
 def server_running(request):
     return Response({"message": "Server running"})
 
-# from django.middleware.csrf import get_token as csrf_get_token
 
-# class UserLoginView(APIView):
-#     permission_classes = [AllowAny]
-
-#     def post(self, request):
-#         email = request.data.get('email')
-#         password = request.data.get('password')
-
-#         user = authenticate(request, email=email, password=password)
-#         if not user:
-#             return Response({"error": "Invalid credentials"}, status=401)
-
-#         refresh = RefreshToken.for_user(user)
-#         access_token = str(refresh.access_token)
-#         refresh_token = str(refresh)
-
-#         response = Response({
-#             "message": f"{'Superadmin' if user.is_superuser else user.job_title or 'User'} logged in",
-#             "email": user.email,
-#             "job_title": user.job_title,
-#             "is_superuser": user.is_superuser,
-#         })
-
-#         response.set_cookie('access_token', access_token, httponly=True, max_age=86400)
-#         response.set_cookie('refresh_token', refresh_token, httponly=True, max_age=604800)
-
-#         return response
 
 class UserLoginView(APIView):
     permission_classes = [AllowAny]
@@ -262,14 +235,12 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
 class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Enquiry.objects.all()
     serializer_class = EnquiryCreateSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         user = self.request.user
-        # ✅ Admins and superadmin can view/edit/delete any enquiry
         if user.is_superuser or (user.job_title and user.job_title.lower() == "admin"):
             return Enquiry.objects.all()
-        # ✅ Others have no access
         return Enquiry.objects.none()
 
     def update(self, request, *args, **kwargs):
