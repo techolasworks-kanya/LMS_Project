@@ -202,70 +202,25 @@ class CourseDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
         return response
 
-# class EnquiryListCreateView(generics.ListCreateAPIView):
-#     queryset = Enquiry.objects.all()
-#     permission_classes = [AllowAny]
-
-#     def get_permissions(self):
-#         if self.request.method == 'POST':
-#             return []
-#         return [AllowAny()]
-
-#     def get_serializer_class(self):
-#         return EnquiryCreateSerializer if self.request.method == 'POST' else EnquiryListSerializer
-
-    
-#     def get_queryset(self):
-#         user = self.request.user
-
-#         # 1. Superadmin or admin-created → see ALL
-#         if user.is_authenticated and (user.is_superuser or getattr(user, '_created_by_superadmin', False)):
-#             return Enquiry.objects.all().order_by('-enquiry_date')
-
-#         # 2. Authenticated normal user → see own enquiries
-#         if user.is_authenticated:
-#             return Enquiry.objects.filter(
-#                 models.Q(created_by=user) | models.Q(email=user.email)
-#             ).order_by('-enquiry_date')
-
-#         return Enquiry.objects.none()
-
-#     def create(self, request, *args, **kwargs):
-#         serializer = self.get_serializer(data=request.data)
-#         serializer.is_valid(raise_exception=True)
-#         self.perform_create(serializer)
-#         return Response(
-#             {"status": "Enquiry created successfully", "data": serializer.data},
-#             status=status.HTTP_201_CREATED
-#         )
-
 class EnquiryListCreateView(generics.ListCreateAPIView):
     queryset = Enquiry.objects.all()
-    permission_classes = [AllowAny]  # Allow all for GET and POST
+    permission_classes = [AllowAny]
 
     def get_permissions(self):
         if self.request.method == 'POST':
             return []  # Anyone can create
-        return [AllowAny()]  # GET: anyone can view
+        return [AllowAny()]  # Anyone can view
 
     def get_serializer_class(self):
         return EnquiryCreateSerializer if self.request.method == 'POST' else EnquiryListSerializer
 
     def get_queryset(self):
-        # SHOW ALL ENQUIRIES — NO FILTER
+        # SHOW ALL ENQUIRIES TO EVERYONE
         return Enquiry.objects.all().order_by('-enquiry_date')
 
     def perform_create(self, serializer):
-        # Optional: still save created_by if logged in
-        if self.request.user.is_authenticated:
-            serializer.save(created_by=self.request.user)
-        else:
-            email = serializer.validated_data.get('email')
-            try:
-                user = CustomUser.objects.get(email__iexact=email)
-                serializer.save(created_by=user)
-            except CustomUser.DoesNotExist:
-                serializer.save(created_by=None)
+        # No created_by → just save
+        serializer.save()
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -275,6 +230,60 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
             {"status": "Enquiry created successfully", "data": serializer.data},
             status=status.HTTP_201_CREATED
         )
+
+# class EnquiryListCreateView(generics.ListCreateAPIView):
+#     queryset = Enquiry.objects.all()
+#     permission_classes = [AllowAny]  
+
+#     def get_permissions(self):
+#         if self.request.method == 'POST':
+#             return []  # Anyone can create
+#         return [AllowAny()]  # GET: anyone can view
+
+#     def get_serializer_class(self):
+#         return EnquiryCreateSerializer if self.request.method == 'POST' else EnquiryListSerializer
+
+#     def get_queryset(self):
+#         # SHOW ALL ENQUIRIES — NO FILTER
+#         return Enquiry.objects.all().order_by('-enquiry_date')
+
+#     # def perform_create(self, serializer):
+#     #     # Optional: still save created_by if logged in
+#     #     if self.request.user.is_authenticated:
+#     #         serializer.save(created_by=self.request.user)
+#     #     else:
+#     #         email = serializer.validated_data.get('email')
+#     #         try:
+#     #             user = CustomUser.objects.get(email__iexact=email)
+#     #             serializer.save(created_by=user)
+#     #         except CustomUser.DoesNotExist:
+#     #             serializer.save(created_by=None)
+#     def perform_create(self, serializer):
+#     # If user is logged in → attach them
+#         if self.request.user.is_authenticated:
+#             serializer.save(created_by=self.request.user)
+#         else:
+#             # Try to link enquiry to existing user by email
+#             email = serializer.validated_data.get('email')
+#             if email:
+#                 try:
+#                     user = CustomUser.objects.get(email__iexact=email)
+#                     serializer.save(created_by=user)
+#                 except CustomUser.DoesNotExist:
+#                     # User doesn't exist → save without created_by
+#                     serializer.save(created_by=None)
+#             else:
+#                 # No email provided → save anonymously
+#                 serializer.save(created_by=None)
+
+#     def create(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         self.perform_create(serializer)
+#         return Response(
+#             {"status": "Enquiry created successfully", "data": serializer.data},
+#             status=status.HTTP_201_CREATED
+#         )
 
 
 class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
