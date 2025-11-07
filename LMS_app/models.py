@@ -43,7 +43,7 @@ class Enquiry(models.Model):
     student_name = models.CharField(max_length=100)
     date_of_birth = models.DateField()
     guardian_name = models.CharField(max_length=100)
-    occupation = models.CharField(max_length=100)
+    occupation = models.CharField(max_length=100,blank=True, null=True)
     phone1 = models.CharField(max_length=15)
     phone2 = models.CharField(max_length=15, blank=True, null=True)
     enquiry_date = models.DateField(auto_now_add=True)
@@ -57,9 +57,9 @@ class Enquiry(models.Model):
     ]
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES, blank=True, null=True)
     educational_qualification = models.CharField(max_length=200)
-    university_college = models.CharField(max_length=200)
-    percentage = models.FloatField()
-    year_of_passing = models.IntegerField()
+    university_college = models.CharField(max_length=200, null=True, blank=True)
+    percentage = models.FloatField(blank=True, null=True)
+    year_of_passing = models.IntegerField(blank=True, null=True)
     HEARD_FROM_CHOICES = [
         ('walk in', 'Walk-in'),
         ('call', 'Call'),
@@ -67,7 +67,7 @@ class Enquiry(models.Model):
         ('social media', 'Social Media'),
     ]
     heard_from = models.CharField(max_length=20, choices=HEARD_FROM_CHOICES, default='walk in')
-    course_interested = models.ForeignKey(course, on_delete=models.CASCADE)
+    course_interested = models.ForeignKey(course, on_delete=models.CASCADE,null=True, blank=True)
     FLEXIBLE_TIMINGS_CHOICES = [
         ('online', 'Online'),
         ('offline', 'Offline'),
@@ -75,12 +75,7 @@ class Enquiry(models.Model):
        
     ]
     flexible_timings = models.CharField(max_length=10, choices=FLEXIBLE_TIMINGS_CHOICES, blank=True, null=True)
-    ACTION_CHOICES = [
-        ('follow up', 'Follow Up'),
-        ('admission', 'Admission'),
-        ('not interested', 'Not Interested'),
-    ]
-    action = models.CharField(max_length=20, choices=ACTION_CHOICES, default='follow up')
+    
 
     def __str__(self):
         return self.student_name

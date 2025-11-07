@@ -229,47 +229,13 @@ class CourseDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
         return response
 
-# Enquiry
-# class EnquiryListCreateView(generics.ListCreateAPIView):
-#     queryset = Enquiry.objects.all()
-#     permission_classes = [IsAuthenticated]
-
-#     def get_permissions(self):
-#         # Allow anyone to create enquiries (optional)
-#         if self.request.method == 'POST':
-#             return []
-#         return [IsAuthenticated()]
-
-#     def get_serializer_class(self):
-#         if self.request.method == 'POST':
-#             return EnquiryCreateSerializer
-#         return EnquiryListSerializer
-
-#     def get_queryset(self):
-#         user = self.request.user
-#         # ✅ Only admins can view all enquiries
-#         if user.is_superuser or (user.job_title and user.job_title.lower() == "admin"):
-#             return Enquiry.objects.all()
-#         # ✅ Normal users can view their own enquiries (optional)
-#         return Enquiry.objects.none()
-
-#     def create(self, request, *args, **kwargs):
-#         serializer = self.get_serializer(data=request.data)
-#         serializer.is_valid(raise_exception=True)
-#         self.perform_create(serializer)
-#         headers = self.get_success_headers(serializer.data)
-#         return Response(
-#             {"status": "Enquiry created successfully.", "data": serializer.data},
-#             status=status.HTTP_201_CREATED,
-#             headers=headers
-#         )
 class EnquiryListCreateView(generics.ListCreateAPIView):
     queryset = Enquiry.objects.all()
     permission_classes = [IsAuthenticated]
 
     def get_permissions(self):
         if self.request.method == 'POST':
-            return []  # anyone can create
+            return []
         return [IsAuthenticated()]
 
     def get_serializer_class(self):

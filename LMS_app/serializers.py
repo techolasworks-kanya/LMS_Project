@@ -23,12 +23,13 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
         model = Enquiry
         fields = '__all__'
         extra_kwargs = {
-            'student_name': {'required': True},
-            'date_of_birth': {'required': True},
-            'guardian_name': {'required': True},
-            'phone1': {'required': True},
+            'student_name':          {'required': True},
+            'date_of_birth':         {'required': True},
+            'guardian_name':         {'required': True},
+            'phone1':                {'required': True},
+            'email':                 {'required': True},
             'educational_qualification': {'required': True},
-            'heard_from': {'required': True},
+            'heard_from':            {'required': True},
         }
 
     def __init__(self, *args, **kwargs):
@@ -44,19 +45,9 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
 class EnquiryListSerializer(serializers.ModelSerializer):
      class Meta:
         model = Enquiry
-        fields = [ 'student_name', 'enquiry_date', 'course_interested','heard_from','action']
-        extra_kwargs = {
-            'student_name': {'required': True},
-            'date_of_birth': {'required': True},  
-            'guardian_name': {'required': True}, 
-            'phone1' : {'required': True},
-            'qualification': {'required': True},
-            'heard_from':{'required': True}
-            
-        } 
-
-
-
+        fields = ['student_name', 'enquiry_date', 'course_interested',
+                  'heard_from']
+        
 
 
 class CreateUserSerializer(serializers.ModelSerializer):
