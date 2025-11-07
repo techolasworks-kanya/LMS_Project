@@ -41,15 +41,15 @@ class course(models.Model):
         return self.course_name
 class Enquiry(models.Model):
     student_name = models.CharField(max_length=100)
-    date_of_birth = models.DateField()
-    guardian_name = models.CharField(max_length=100)
+    date_of_birth = models.DateField(null=True, blank=True)
+    guardian_name = models.CharField(max_length=100,null=True, blank=True)
     occupation = models.CharField(max_length=100,blank=True, null=True)
     phone1 = models.CharField(max_length=15)
     phone2 = models.CharField(max_length=15, blank=True, null=True)
     enquiry_date = models.DateField(auto_now_add=True)
 
-    email = models.EmailField()
-    address = models.TextField()
+    email = models.EmailField(null=True, blank=True)
+    address = models.TextField(null=True, blank=True)
     GENDER_CHOICES = [
         ('male', 'Male'),
         ('female', 'Female'),

@@ -24,10 +24,8 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
         fields = '__all__'
         extra_kwargs = {
             'student_name':          {'required': True},
-            'date_of_birth':         {'required': True},
-            'guardian_name':         {'required': True},
             'phone1':                {'required': True},
-            'email':                 {'required': True},
+         
             'educational_qualification': {'required': True},
             'heard_from':            {'required': True},
         }
