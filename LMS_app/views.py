@@ -322,8 +322,8 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
     def get_serializer_class(self):
         return FollowUpListSerializer if self.request.method == 'GET' else FollowUpDetailSerializer
 
-    def get_queryset(self):
-        return self.queryset.order_by('-followup_date')
+    # def get_queryset(self):
+    #     return self.queryset.order_by('-followup_date')
 
     def perform_create(self, serializer):
         serializer.save()   

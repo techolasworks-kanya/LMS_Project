@@ -201,7 +201,7 @@ class FollowUpListSerializer(serializers.ModelSerializer):
         allow_null=True
     )
     enquiry_date = serializers.DateField(source='enquiry.enquiry_date', read_only=True)
-    source_of_enquiry = serializers.CharField(source='enquiry.heard_from', read_only=True)
+    # source_of_enquiry = serializers.CharField(source='enquiry.heard_from', read_only=True)
 
     class Meta:
         model = FollowUps
@@ -210,9 +210,9 @@ class FollowUpListSerializer(serializers.ModelSerializer):
             'student_name',
             'course_interested',
             'enquiry_date',
-            'source_of_enquiry',
+            # 'source_of_enquiry',
             'status',
-            'followup_date',
+            # 'followup_date',
             'next_followup_date',
         ]
 
