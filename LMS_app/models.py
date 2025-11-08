@@ -102,6 +102,12 @@ from django.utils import timezone
 #     def __str__(self):
 #         return f"Action for {self.enquiry.student_name} on {self.action_date}"
 
+
+
+
+
+
+
 class FollowUps(models.Model):
     enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE,
                                 related_name='follow_up_actions')
@@ -116,7 +122,6 @@ class FollowUps(models.Model):
     ]
     status = models.CharField(max_length=20, choices=STATUS_CHOICES,
                               default='new')
-    remarks = models.TextField(blank=True, null=True)
     next_followup_date = models.DateField(null=True, blank=True)
 
     class Meta:
@@ -125,3 +130,15 @@ class FollowUps(models.Model):
 
     def __str__(self):
         return f"Follow-up for {self.enquiry.student_name} on {self.followup_date}"
+    
+
+class FollowUpRemark(models.Model):
+    followup = models.ForeignKey('FollowUps',on_delete=models.CASCADE,related_name='remarks')
+    content = models.TextField()
+    added_on = models.DateTimeField(default=timezone.now, editable=False)
+
+    class Meta:
+        ordering = ['-added_on']
+
+    def __str__(self):
+        return f"{self.content[:30]}... ({self.added_on.strftime('%d/%m/%Y, %I:%M %p')})"

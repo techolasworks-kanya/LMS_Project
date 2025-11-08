@@ -218,35 +218,223 @@ class FollowUpListSerializer(serializers.ModelSerializer):
 
 # 2. Detail / Create / Update – full enquiry data + follow-up fields
 
+# class FollowUpDetailSerializer(serializers.ModelSerializer):
+#     enquiry_data = serializers.SerializerMethodField()
+
+#     class Meta:
+#         model = FollowUps
+#         fields = [
+#             'id',
+#             'enquiry',
+#             'enquiry_data',
+#             'followup_date',
+#             'status',
+#             'remarks',
+#             'next_followup_date',
+#         ]
+#         read_only_fields = ('followup_date', 'enquiry_data')
+
+#     def get_enquiry_data(self, obj):
+#         e = obj.enquiry
+#         return {
+#             "student_name": e.student_name,
+#             "course_interested": e.course_interested.course_name if e.course_interested else None,
+#             "enquiry_date": e.enquiry_date,
+#             "heard_from": e.heard_from,
+#         }
+
+#     # Make 'enquiry' read-only only during update
+#     def __init__(self, *args, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         if self.instance:
+#             self.fields['enquiry'].read_only = True
+#             self.fields['enquiry'].required = False
+class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
+    course_interested_input = serializers.CharField(
+        source='course_interested',
+        required=False,
+        allow_blank=True,
+        write_only=True,
+        help_text="Course name (e.g. 'Python Full Stack') or ID (e.g. 5)"
+    )
+
+    class Meta:
+        model = Enquiry
+        fields = [
+            'student_name', 'date_of_birth', 'guardian_name', 'occupation',
+            'phone1', 'phone2', 'email', 'address', 'gender',
+            'educational_qualification', 'university_college',
+            'percentage', 'year_of_passing', 'heard_from',
+            'course_interested_input', 'flexible_timings'
+        ]
+        extra_kwargs = {f: {'required': False} for f in fields}
+
+    def to_internal_value(self, data):
+        data = data.copy()
+        raw_course = data.pop('course_interested_input', None)
+
+        if raw_course is not None:
+            raw_course = str(raw_course).strip()
+            if raw_course == '':
+                data['course_interested'] = None
+            elif raw_course.isdigit():
+                try:
+                    data['course_interested'] = course.objects.get(pk=int(raw_course))
+                except course.DoesNotExist:
+                    raise serializers.ValidationError({
+                        'course_interested_input': f'Course with ID {raw_course} not found.'
+                    })
+            else:
+                try:
+                    data['course_interested'] = course.objects.get(course_name__iexact=raw_course)
+                except course.DoesNotExist:
+                    raise serializers.ValidationError({
+                        'course_interested_input': f'Course "{raw_course}" not found.'
+                    })
+
+        return super().to_internal_value(data)
+
+
+# class FollowUpDetailSerializer(serializers.ModelSerializer):
+#     enquiry = EnquiryNestedUpdateSerializer(write_only=True)
+#     enquiry_data = serializers.SerializerMethodField(read_only=True)
+
+#     class Meta:
+#         model = FollowUps
+#         fields = [
+#             'id',
+#             'enquiry',
+#             'enquiry_data',
+#             'followup_date',
+#             'status',
+#             'remarks',
+#             'next_followup_date',
+#         ]
+#         read_only_fields = ('followup_date', 'enquiry_data')
+
+#     def get_enquiry_data(self, obj):
+#         # RELOAD the enquiry from DB to get latest saved values
+#         enquiry = Enquiry.objects.select_related('course_interested').get(pk=obj.enquiry.pk)
+#         return {
+#             "student_name": enquiry.student_name,
+#             "date_of_birth": str(enquiry.date_of_birth) if enquiry.date_of_birth else None,
+#             "guardian_name": enquiry.guardian_name,
+#             "occupation": enquiry.occupation,
+#             "phone1": enquiry.phone1,
+#             "phone2": enquiry.phone2,
+#             "email": enquiry.email,
+#             "address": enquiry.address,
+#             "gender": enquiry.gender,
+#             "educational_qualification": enquiry.educational_qualification,
+#             "university_college": enquiry.university_college,
+#             "percentage": enquiry.percentage,
+#             "year_of_passing": enquiry.year_of_passing,
+#             "heard_from": enquiry.heard_from,
+#             "course_interested": enquiry.course_interested.course_name if enquiry.course_interested else None,
+#             "flexible_timings": enquiry.flexible_timings,
+#             "enquiry_date": str(enquiry.enquiry_date)
+#         }
+
+#     def update(self, instance, validated_data):
+#         enquiry_data = validated_data.pop('enquiry', {})
+
+#         # Update FollowUp fields
+#         for attr, value in validated_data.items():
+#             setattr(instance, attr, value)
+#         instance.save()
+
+#         # Update Enquiry if provided
+#         if enquiry_data:
+#             enquiry = instance.enquiry
+#             enquiry_serializer = EnquiryNestedUpdateSerializer(
+#                 enquiry, data=enquiry_data, partial=True
+#             )
+#             enquiry_serializer.is_valid(raise_exception=True)
+#             enquiry_serializer.save()  # This saves to DB
+
+#         return instance
+
+
+# serializers.py
+from rest_framework import serializers
+from .models import FollowUps, Enquiry, FollowUpRemark, course
+
+class FollowUpRemarkSerializer(serializers.ModelSerializer):
+    added_on = serializers.DateTimeField(format='%d/%m/%Y, %I:%M %p', read_only=True)
+
+    class Meta:
+        model = FollowUpRemark
+        fields = ['id', 'content', 'added_on']
+        read_only_fields = ['id', 'added_on']
+
+
 class FollowUpDetailSerializer(serializers.ModelSerializer):
+    enquiry = EnquiryNestedUpdateSerializer(write_only=True)
+    
+    # This field uses get_enquiry_data()
     enquiry_data = serializers.SerializerMethodField()
+    
+    # Accept list of remarks
+    remarks = serializers.ListField(
+        child=serializers.CharField(max_length=1000, allow_blank=True),
+        write_only=True,
+        required=False
+    )
+    
+    # Show all remarks history
+    remarks_history = FollowUpRemarkSerializer(many=True, read_only=True, source='remarks')
 
     class Meta:
         model = FollowUps
         fields = [
-            'id',
-            'enquiry',
-            'enquiry_data',
-            'followup_date',
-            'status',
-            'remarks',
-            'next_followup_date',
+            'id', 'followup_date', 'status', 'next_followup_date',
+            'enquiry', 'enquiry_data', 'remarks', 'remarks_history'
         ]
-        read_only_fields = ('followup_date', 'enquiry_data')
+        read_only_fields = ('followup_date', 'enquiry_data', 'remarks_history')
 
+    # THIS METHOD WAS MISSING → ADD IT!
     def get_enquiry_data(self, obj):
-        e = obj.enquiry
+        e = Enquiry.objects.select_related('course_interested').get(pk=obj.enquiry.pk)
         return {
             "student_name": e.student_name,
-            "course_interested": e.course_interested.course_name if e.course_interested else None,
-            "enquiry_date": e.enquiry_date,
+            "date_of_birth": str(e.date_of_birth) if e.date_of_birth else None,
+            "guardian_name": e.guardian_name,
+            "occupation": e.occupation,
+            "phone1": e.phone1,
+            "phone2": e.phone2,
+            "email": e.email,
+            "address": e.address,
+            "gender": e.gender,
+            "educational_qualification": e.educational_qualification,
+            "university_college": e.university_college,
+            "percentage": e.percentage,
+            "year_of_passing": e.year_of_passing,
             "heard_from": e.heard_from,
-            # add more as needed
+            "course_interested": e.course_interested.course_name if e.course_interested else None,
+            "flexible_timings": e.flexible_timings,
+            "enquiry_date": str(e.enquiry_date)
         }
 
-    # Make 'enquiry' read-only only during update
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.instance:
-            self.fields['enquiry'].read_only = True
-            self.fields['enquiry'].required = False
+    def update(self, instance, validated_data):
+        enquiry_data = validated_data.pop('enquiry', {})
+        new_remarks = validated_data.pop('remarks', [])
+
+        # Update FollowUp fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Update Enquiry
+        if enquiry_data:
+            enquiry = instance.enquiry
+            serializer = EnquiryNestedUpdateSerializer(enquiry, data=enquiry_data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+
+        # Add remarks
+        for content in new_remarks:
+            content = content.strip()
+            if content:
+                FollowUpRemark.objects.create(followup=instance, content=content)
+
+        return instance
