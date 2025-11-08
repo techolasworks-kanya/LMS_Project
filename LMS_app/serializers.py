@@ -62,11 +62,10 @@ class CourseListSerializer(serializers.ModelSerializer):
 #         return super().to_internal_value(data)
 class EnquiryCreateSerializer(serializers.ModelSerializer):
     course_interested_input = serializers.CharField(
-        source='course_interested',      # maps to the FK field
-        required=False,
+        source='course_interested',  required=False,
         allow_blank=True,
         write_only=True,
-        help_text="Course name (e.g. 'Python Full Stack') or ID (e.g. 4)"
+        help_text="Course name or"
     )
 
     class Meta:
@@ -135,10 +134,12 @@ class EnquiryListSerializer(serializers.ModelSerializer):
         read_only=True,
         allow_null=True
     )
+    enquiry_date = serializers.DateField(format='%d-%m-%Y',  input_formats=['%Y-%m-%d'], read_only=True)
 
     class Meta:
         model = Enquiry
         fields = [
+            'id',
             'student_name',
             'enquiry_date',
             'course_interested',   
@@ -188,3 +189,64 @@ class CreateUserSerializer(serializers.ModelSerializer):
         )
         user.temp_password = password
         return user
+    
+
+
+
+class FollowUpListSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='enquiry.student_name', read_only=True)
+    course_interested = serializers.CharField(
+        source='enquiry.course_interested.course_name',
+        read_only=True,
+        allow_null=True
+    )
+    enquiry_date = serializers.DateField(source='enquiry.enquiry_date', read_only=True)
+    source_of_enquiry = serializers.CharField(source='enquiry.heard_from', read_only=True)
+
+    class Meta:
+        model = FollowUps
+        fields = [
+            'id',
+            'student_name',
+            'course_interested',
+            'enquiry_date',
+            'source_of_enquiry',
+            'status',
+            'followup_date',
+            'next_followup_date',
+        ]
+
+# 2. Detail / Create / Update – full enquiry data + follow-up fields
+
+class FollowUpDetailSerializer(serializers.ModelSerializer):
+    enquiry_data = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FollowUps
+        fields = [
+            'id',
+            'enquiry',
+            'enquiry_data',
+            'followup_date',
+            'status',
+            'remarks',
+            'next_followup_date',
+        ]
+        read_only_fields = ('followup_date', 'enquiry_data')
+
+    def get_enquiry_data(self, obj):
+        e = obj.enquiry
+        return {
+            "student_name": e.student_name,
+            "course_interested": e.course_interested.course_name if e.course_interested else None,
+            "enquiry_date": e.enquiry_date,
+            "heard_from": e.heard_from,
+            # add more as needed
+        }
+
+    # Make 'enquiry' read-only only during update
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance:
+            self.fields['enquiry'].read_only = True
+            self.fields['enquiry'].required = False

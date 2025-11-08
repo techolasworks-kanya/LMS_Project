@@ -10,6 +10,11 @@ urlpatterns = [
     path('api/enquiries', views.EnquiryListCreateView.as_view(), name='enquiry-create-list'),
     path('api/enquiries/<int:pk>', views.EnquiryDetailView.as_view(), name='enquiry-retrieve-update-destroy'),
 
+
+    #folloup actions API endpoints
+    path('api/followups', views.FollowUpListCreateView.as_view(), name='followup-list-create'),
+    path('api/followups/<int:pk>', views.FollowUpDetailView.as_view(), name='followup-detail'),
+
     path('api/courses', views.CourseListCreateView.as_view(), name='course-create-list'),
     path('api/courses/<int:pk>', views.CourseDetailView.as_view(), name='course-retrieve-update-destroy'),
 
@@ -22,7 +27,6 @@ urlpatterns = [
     path('api/reset-password', views.ResetPasswordView.as_view(), name='reset_password'),
     path('api/logout', views.UserLogoutView.as_view(), name='user-logout'),
     path('api/token/refresh', views.TokenRefreshView.as_view()),
-
     path('api/users_register', views.CreateUserAPIView.as_view(), name='user-register'),
 
 

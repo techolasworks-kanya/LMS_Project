@@ -215,7 +215,6 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
         return EnquiryCreateSerializer if self.request.method == 'POST' else EnquiryListSerializer
 
     def get_queryset(self):
-        # SHOW ALL ENQUIRIES TO EVERYONE
         return Enquiry.objects.all().order_by('-enquiry_date')
 
     def perform_create(self, serializer):
@@ -313,3 +312,63 @@ class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
             status=status.HTTP_204_NO_CONTENT
         )
 
+
+
+
+#followup
+class FollowUpListCreateView(generics.ListCreateAPIView):
+    queryset = FollowUps.objects.select_related('enquiry', 'enquiry__course_interested')
+    permission_classes = [AllowAny]          # change as you need
+
+    def get_serializer_class(self):
+        return FollowUpListSerializer if self.request.method == 'GET' else FollowUpDetailSerializer
+
+    def get_queryset(self):
+        return self.queryset.order_by('-followup_date')
+
+    def perform_create(self, serializer):
+        serializer.save()   
+
+
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(
+            {"status": "Follow-up created", "data": serializer.data},
+            status=status.HTTP_201_CREATED,
+            headers=headers
+        )
+    
+
+class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = FollowUps.objects.select_related('enquiry', 'enquiry__course_interested')
+    serializer_class = FollowUpDetailSerializer
+    permission_classes = [IsAuthenticated]
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response({"status": "Success", "data": serializer.data})
+
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        return Response({
+            "status": "Follow-up updated",
+            "data": serializer.data
+        })
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.delete()
+        return Response(
+            {"status": "Follow-up deleted"},
+            status=status.HTTP_204_NO_CONTENT
+        )
