@@ -218,7 +218,6 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
         return Enquiry.objects.all().order_by('-enquiry_date')
 
     def perform_create(self, serializer):
-        # No created_by → just save
         serializer.save()
 
     def create(self, request, *args, **kwargs):
@@ -346,7 +345,7 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
 class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = FollowUps.objects.select_related('enquiry', 'enquiry__course_interested')
     serializer_class = FollowUpDetailSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -372,3 +371,4 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
             {"status": "Follow-up deleted"},
             status=status.HTTP_204_NO_CONTENT
         )
+    

@@ -5,3 +5,4 @@ from .models import *
 admin.site.register(certfication)
 admin.site.register(course)
 admin.site.register(Enquiry)
+admin.site.register(FollowUps)
