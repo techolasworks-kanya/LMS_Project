@@ -261,10 +261,71 @@ class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 # Follow-up List and Create
 
+# class FollowUpListCreateView(generics.ListCreateAPIView):
+#     queryset = FollowUps.objects.select_related(
+#         'enquiry', 'enquiry__course_interested'
+#     ).prefetch_related('remarks')
+#     permission_classes = [AllowAny]
+
+#     def get_serializer_class(self):
+#         return FollowUpListSerializer if self.request.method == 'GET' else FollowUpDetailSerializer
+
+#     def perform_create(self, serializer):
+#         enquiry_ids = serializer.validated_data.pop('enquiry_ids')
+#         remarks = serializer.validated_data.pop('remarks', [])
+
+#     # Validate enquiries exist and not already converted
+#         enquiries = Enquiry.objects.filter(
+#             id__in=enquiry_ids,
+#             follow_up_actions__isnull=True
+#         )
+#         found_ids = enquiries.values_list('id', flat=True)
+#         missing = set(enquiry_ids) - set(found_ids)
+#         if missing:
+#             raise serializers.ValidationError({
+#                 "enquiry_ids": f"Enquiries with IDs {list(missing)} not found or already converted."
+#             })
+
+#         created_followups = []
+#         for enquiry in enquiries:
+#             followup = FollowUps.objects.create(
+#                 enquiry=enquiry,
+#                 enquiry_source=enquiry.heard_from,
+#                 status=serializer.validated_data.get('status', 'new'),
+#                 next_followup_date=serializer.validated_data.get('next_followup_date'),
+#             )
+
+#             if remarks:
+#                 # Option: assign all remarks to each follow-up
+#                 for content in remarks:
+#                     if content.strip():
+#                         FollowUpRemark.objects.create(followup=followup, content=content.strip())
+              
+#             created_followups.append(followup)
+
+#         # DELETE all enquiries
+#         enquiries.delete()
+
+#     # Return first follow-up for response (or list all?)
+#         serializer.instance = created_followups[0] if created_followups else None
+
+#     def create(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         self.perform_create(serializer)
+
+#         # Serialize all created follow-ups
+#         followup_serializer = FollowUpListSerializer(
+#             serializer.instance, context={'request': request}
+#         ) if serializer.instance else None
+
+#         return Response({
+#             "status": f"{len(request.data.get('enquiry_ids', []))} follow-up(s) created successfully",
+#             "data": followup_serializer.data if followup_serializer else None
+#         }, status=status.HTTP_201_CREATED)
+    
 class FollowUpListCreateView(generics.ListCreateAPIView):
-    queryset = FollowUps.objects.select_related(
-        'enquiry', 'enquiry__course_interested'
-    ).prefetch_related('remarks')
+    queryset = FollowUps.objects.select_related('enquiry', 'enquiry__course_interested').prefetch_related('remarks')
     permission_classes = [AllowAny]
 
     def get_serializer_class(self):
@@ -274,7 +335,7 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
         enquiry_ids = serializer.validated_data.pop('enquiry_ids')
         remarks = serializer.validated_data.pop('remarks', [])
 
-    # Validate enquiries exist and not already converted
+        # Validate enquiries exist and not already converted
         enquiries = Enquiry.objects.filter(
             id__in=enquiry_ids,
             follow_up_actions__isnull=True
@@ -292,39 +353,36 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
                 enquiry=enquiry,
                 enquiry_source=enquiry.heard_from,
                 status=serializer.validated_data.get('status', 'new'),
-                next_followup_date=serializer.validated_data.get('next_followup_date'),
+                next_followup_date=serializer.validated_data.get('next_followup_date')
             )
 
-            if remarks:
-                # Option: assign all remarks to each follow-up
-                for content in remarks:
-                    if content.strip():
-                        FollowUpRemark.objects.create(followup=followup, content=content.strip())
-              
+            # Add remarks
+            for content in remarks:
+                if content.strip():
+                    FollowUpRemark.objects.create(followup=followup, content=content.strip())
+
             created_followups.append(followup)
 
-        # DELETE all enquiries
+        # DELETE enquiries
         enquiries.delete()
 
-    # Return first follow-up for response (or list all?)
-        serializer.instance = created_followups[0] if created_followups else None
+        # Store for response
+        self.created_followups = created_followups
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
 
-        # Serialize all created follow-ups
-        followup_serializer = FollowUpListSerializer(
-            serializer.instance, context={'request': request}
-        ) if serializer.instance else None
+        # Return all created follow-ups
+        response_data = FollowUpListSerializer(
+            self.created_followups, many=True, context={'request': request}
+        ).data
 
         return Response({
-            "status": f"{len(request.data.get('enquiry_ids', []))} follow-up(s) created successfully",
-            "data": followup_serializer.data if followup_serializer else None
+            "status": f"{len(self.created_followups)} follow-up(s) created successfully",
+            "data": response_data
         }, status=status.HTTP_201_CREATED)
-    
-
 # Follow-up Detail with nested Enquiry update
 class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = FollowUps.objects.select_related(

@@ -21,6 +21,7 @@ class CourseListSerializer(serializers.ModelSerializer):
 
 from rest_framework import serializers
 from .models import Enquiry, course
+from datetime import datetime
 
 class EnquiryCreateSerializer(serializers.ModelSerializer):
     # INPUT: Accept raw string or ID
@@ -50,6 +51,29 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
 
     def to_internal_value(self, data):
         data = dict(data)
+        raw_dob = data.get('date_of_birth')
+        if raw_dob:
+            if isinstance(raw_dob, list):
+                raw_dob = raw_dob[0] if raw_dob else ''
+            raw_dob = str(raw_dob).strip()
+
+            if raw_dob in ['', 'null', 'undefined']:
+                data['date_of_birth'] = None
+            else:
+                # Try dd-mm-yyyy first
+                parsed = None
+                for fmt in ('%d-%m-%Y', '%Y-%m-%d'):
+                    try:
+                        parsed = datetime.strptime(raw_dob, fmt).date()
+                        break
+                    except ValueError:
+                        continue
+                if parsed:
+                    data['date_of_birth'] = parsed
+                else:
+                    raise serializers.ValidationError({
+                        'date_of_birth': 'Invalid date format. Use dd-mm-yyyy or yyyy-mm-dd.'
+                    })
 
         raw_course = data.get('course_interested_input')
 
@@ -109,6 +133,7 @@ class EnquiryListSerializer(serializers.ModelSerializer):
     )
     course_interested_input = serializers.SerializerMethodField()
     enquiry_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
+    date_of_birth = serializers.DateField(format='%d-%m-%Y', read_only=True, allow_null=True)
 
     class Meta:
         model = Enquiry
@@ -170,6 +195,7 @@ class CreateUserSerializer(serializers.ModelSerializer):
 
 class FollowUpListSerializer(serializers.ModelSerializer):
     enquiry_data = serializers.SerializerMethodField()
+    followup_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
     latest_remark = serializers.SerializerMethodField()
     next_followup_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
     status = serializers.CharField()
@@ -262,23 +288,84 @@ class FollowUpRemarkSerializer(serializers.ModelSerializer):
 
 
 
+# class FollowUpDetailSerializer(serializers.ModelSerializer):
+#     enquiry = EnquiryNestedUpdateSerializer()  # ← writable nested
+#     followup_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
+#     next_followup_date = serializers.DateField(format='%d-%m-%Y', allow_null=True, read_only=True)
+#     remarks = serializers.ListField(
+#         child=serializers.CharField(max_length=1000, allow_blank=True),
+#         write_only=True,
+#         required=False
+#     )
+#     enquiry_data = serializers.SerializerMethodField()
+#     remarks_history = FollowUpRemarkSerializer(many=True, read_only=True, source='remarks')
+
+#     class Meta:
+#         model = FollowUps
+#         fields = [
+#             'id', 'followup_date', 'status', 'next_followup_date',
+#             'enquiry', 'enquiry_data', 'remarks', 'remarks_history'
+#         ]
+#         read_only_fields = ('id', 'followup_date', 'enquiry_data', 'remarks_history')
+
+#     def get_enquiry_data(self, obj):
+#         e = obj.enquiry
+#         return {
+#             "student_name": e.student_name,
+#             "phone1": e.phone1,
+#             "course_interested": e.course_interested.course_name if e.course_interested else None,
+#             "heard_from": e.heard_from,
+#             "enquiry_date": str(e.enquiry_date),
+#             "date_of_birth": e.date_of_birth.strftime('%d-%m-%Y') if e.date_of_birth else None,
+#         }
+
+#     # === FIXED: Custom update() for nested fields ===
+#     def update(self, instance, validated_data):
+#         # 1. Update FollowUp fields
+#         instance.status = validated_data.get('status', instance.status)
+#         instance.next_followup_date = validated_data.get('next_followup_date', instance.next_followup_date)
+#         instance.save()
+
+#         # 2. Update nested Enquiry
+#         enquiry_data = validated_data.pop('enquiry', {})
+#         if enquiry_data:
+#             enquiry = instance.enquiry
+#             enquiry_serializer = EnquiryNestedUpdateSerializer(enquiry, data=enquiry_data, partial=True)
+#             enquiry_serializer.is_valid(raise_exception=True)
+#             enquiry_serializer.save()
+
+#         # 3. Add new remarks
+#         remarks = validated_data.pop('remarks', [])
+#         for content in remarks:
+#             if content.strip():
+#                 FollowUpRemark.objects.create(followup=instance, content=content.strip())
+
+#         return instance
 class FollowUpDetailSerializer(serializers.ModelSerializer):
-    enquiry = EnquiryNestedUpdateSerializer()  # ← writable nested
+    # ACCEPT LIST OF IDs
+    enquiry_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=True,
+        help_text="List of enquiry IDs to convert to follow-ups"
+    )
+
     remarks = serializers.ListField(
         child=serializers.CharField(max_length=1000, allow_blank=True),
         write_only=True,
         required=False
     )
+
     enquiry_data = serializers.SerializerMethodField()
     remarks_history = FollowUpRemarkSerializer(many=True, read_only=True, source='remarks')
 
     class Meta:
         model = FollowUps
         fields = [
-            'id', 'followup_date', 'status', 'next_followup_date',
-            'enquiry', 'enquiry_data', 'remarks', 'remarks_history'
+            'enquiry_ids', 'status', 'next_followup_date',
+            'enquiry_data', 'remarks', 'remarks_history'
         ]
-        read_only_fields = ('id', 'followup_date', 'enquiry_data', 'remarks_history')
+        read_only_fields = ('enquiry_data', 'remarks_history')
 
     def get_enquiry_data(self, obj):
         e = obj.enquiry
@@ -287,32 +374,8 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
             "phone1": e.phone1,
             "course_interested": e.course_interested.course_name if e.course_interested else None,
             "heard_from": e.heard_from,
-            "enquiry_date": str(e.enquiry_date)
-        }
-
-    # === FIXED: Custom update() for nested fields ===
-    def update(self, instance, validated_data):
-        # 1. Update FollowUp fields
-        instance.status = validated_data.get('status', instance.status)
-        instance.next_followup_date = validated_data.get('next_followup_date', instance.next_followup_date)
-        instance.save()
-
-        # 2. Update nested Enquiry
-        enquiry_data = validated_data.pop('enquiry', {})
-        if enquiry_data:
-            enquiry = instance.enquiry
-            enquiry_serializer = EnquiryNestedUpdateSerializer(enquiry, data=enquiry_data, partial=True)
-            enquiry_serializer.is_valid(raise_exception=True)
-            enquiry_serializer.save()
-
-        # 3. Add new remarks
-        remarks = validated_data.pop('remarks', [])
-        for content in remarks:
-            if content.strip():
-                FollowUpRemark.objects.create(followup=instance, content=content.strip())
-
-        return instance
-    
+            "enquiry_date": e.enquiry_date.strftime('%d-%m-%Y')
+        }   
 
 #Admission Serializer
 class AdmissionListSerializer(serializers.ModelSerializer):
