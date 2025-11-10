@@ -259,39 +259,7 @@ class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
 
 
-
-# class FollowUpListCreateView(generics.ListCreateAPIView):
-#     queryset = FollowUps.objects.select_related(
-#         'enquiry', 'enquiry__course_interested'
-#     ).prefetch_related('remarks')
-#     permission_classes = [AllowAny]  
-
-#     def get_serializer_class(self):
-#         if self.request.method == 'GET':
-#             return FollowUpListSerializer
-#         return FollowUpDetailSerializer
-
-#     def perform_create(self, serializer):
-#         # Auto-set enquiry_source on create
-#         enquiry = serializer.validated_data['enquiry']
-#         followup = serializer.save(enquiry_source=enquiry.heard_from)
-        
-#         # Add remark if provided
-#         remarks = self.request.data.get('remarks', [])
-#         for content in remarks:
-#             if content.strip():
-#                 FollowUpRemark.objects.create(followup=followup, content=content.strip())
-
-#     def create(self, request, *args, **kwargs):
-#         serializer = self.get_serializer(data=request.data)
-#         serializer.is_valid(raise_exception=True)
-#         self.perform_create(serializer)
-#         headers = self.get_success_headers(serializer.data)
-#         return Response(
-#             {"status": "Follow-up created", "data": serializer.data},
-#             status=status.HTTP_201_CREATED,
-#             headers=headers
-#         )
+# Follow-up List and Create
 
 class FollowUpListCreateView(generics.ListCreateAPIView):
     queryset = FollowUps.objects.select_related(
@@ -356,22 +324,8 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
             "data": followup_serializer.data if followup_serializer else None
         }, status=status.HTTP_201_CREATED)
     
-# class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
-#     queryset = FollowUps.objects.select_related('enquiry', 'enquiry__course_interested').prefetch_related('remarks')
-#     serializer_class = FollowUpDetailSerializer
-#     permission_classes = [AllowAny]
 
-#     def update(self, request, *args, **kwargs):
-#         partial = kwargs.pop('partial', False)
-#         instance = self.get_object()
-#         serializer = self.get_serializer(instance, data=request.data, partial=partial)
-#         serializer.is_valid(raise_exception=True)
-#         self.perform_update(serializer)
-
-#         return Response({
-#             "status": "Follow-up updated successfully",
-#             "data": serializer.data
-#         })
+# Follow-up Detail with nested Enquiry update
 class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = FollowUps.objects.select_related(
         'enquiry', 'enquiry__course_interested'
@@ -405,12 +359,20 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
         for content in remarks:
             if content.strip():
                 FollowUpRemark.objects.create(followup=followup, content=content.strip())
+        
+        # AUTO MOVE TO NOT INTERESTED
+        if followup.status == 'not_interested' and old_status != 'not_interested':
+            NotInterestedLead.objects.create(
+                followup=followup,
+                enquiry=followup.enquiry,
+                last_followup_date=followup.followup_date,  # ← SAVE DATE HERE
+                status='not_interested'
+            )
+            followup.delete()  # Safe now
 
-        # Return full updated data
-        output = self.get_serializer(followup).data
         return Response({
-            "status": "Follow-up and enquiry updated successfully",
-            "data": output
+            "status": "Updated",
+            "archived": True
         })
     
 # Admission
@@ -474,3 +436,49 @@ class AdmissionDetailView(generics.RetrieveAPIView):
     queryset = Admission.objects.select_related('enquiry', 'enquiry__course_interested')
     serializer_class = AdmissionListSerializer
     permission_classes = [AllowAny]
+
+
+
+
+class NotInterestedLeadCreateView(generics.CreateAPIView):
+    def create(self, request, *args, **kwargs):
+        followup_id = request.data.get('followup_id')
+        status = request.data.get('status', 'not_interested')
+
+        try:
+            followup = FollowUps.objects.select_related('enquiry').get(id=followup_id)
+        except FollowUps.DoesNotExist:
+            return Response({"error": "Follow-up not found"}, status=404)
+
+        if NotInterestedLead.objects.filter(followup=followup).exists():
+            return Response({"error": "Already archived"}, status=400)
+
+        NotInterestedLead.objects.create(
+            followup=followup,
+            enquiry=followup.enquiry,
+            last_followup_date=followup.followup_date,
+            status=status
+        )
+        followup.delete()
+
+        return Response({
+            "status": "Moved to Not Interested",
+            "student_name": followup.enquiry.student_name
+        }, status=201)
+
+
+# LIST with SEARCH
+class NotInterestedLeadListView(generics.ListAPIView):
+    serializer_class = NotInterestedLeadListSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        queryset = NotInterestedLead.objects.select_related(
+            'followup', 'enquiry', 'enquiry__course_interested'
+        )
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                enquiry__student_name__icontains=search
+            )
+        return queryset

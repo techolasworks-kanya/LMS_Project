@@ -137,3 +137,23 @@ class Admission(models.Model):
         return f"Admission: {self.enquiry.student_name} - {self.course}"
     
 
+class NotInterestedLead(models.Model):
+    followup = models.ForeignKey(FollowUps, on_delete=models.SET_NULL,null=True, blank=True,related_name='not_interested_lead')
+    enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE,related_name='not_interested_records')
+    last_followup_date = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20,
+choices=[
+            ('not_interested', 'Not Interested'),
+            ('rejected', 'Rejected'),
+            ('follow_up', 'Follow Up'),
+        ],
+        default='not_interested'
+    )
+    archived_on = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name_plural = "Not Interested Leads"
+        ordering = ['-archived_on']
+
+    def __str__(self):
+        return f"{self.enquiry.student_name} - {self.get_status_display()}"
