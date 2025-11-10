@@ -171,7 +171,7 @@ class CreateUserSerializer(serializers.ModelSerializer):
 class FollowUpListSerializer(serializers.ModelSerializer):
     enquiry_data = serializers.SerializerMethodField()
     latest_remark = serializers.SerializerMethodField()
-    next_followup_date = serializers.DateField(format='%Y-%m-%d', read_only=True)
+    next_followup_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
     status = serializers.CharField()
     id = serializers.IntegerField()
 
@@ -358,6 +358,7 @@ class NotInterestedLeadListSerializer(serializers.ModelSerializer):
         ('rejected', 'Rejected'),
         ('follow_up', 'Follow Up'),
     ])
+    email = serializers.CharField(source='enquiry.email', allow_null=True)
 
     class Meta:
         model = NotInterestedLead
@@ -369,5 +370,6 @@ class NotInterestedLeadListSerializer(serializers.ModelSerializer):
             'qualification',
             'phone1',
             'status',
+            'email'
            
         ]

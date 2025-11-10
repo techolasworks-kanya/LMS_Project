@@ -93,7 +93,10 @@ class FollowUps(models.Model):
     STATUS_CHOICES = [
         ('new', 'New'),
         ('hot_lead', 'Hot Lead'),
+        ('interested', 'Interested'),
         ('not_interested', 'Not Interested'),
+        ('contacted', 'Contacted'),
+        ('indiscussion', 'In Discussion')
     ]
     status = models.CharField(max_length=20, choices=STATUS_CHOICES,
                               default='new')

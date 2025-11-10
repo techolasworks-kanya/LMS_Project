@@ -457,7 +457,8 @@ class NotInterestedLeadCreateView(generics.CreateAPIView):
             followup=followup,
             enquiry=followup.enquiry,
             last_followup_date=followup.followup_date,
-            status=status
+            status=status,
+            email=followup.enquiry.email
         )
         followup.delete()
 
@@ -482,3 +483,5 @@ class NotInterestedLeadListView(generics.ListAPIView):
                 enquiry__student_name__icontains=search
             )
         return queryset
+    
+
