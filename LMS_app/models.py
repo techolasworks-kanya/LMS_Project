@@ -160,3 +160,18 @@ choices=[
 
     def __str__(self):
         return f"{self.enquiry.student_name} - {self.get_status_display()}"
+
+
+
+
+class Notification(models.Model):
+    content = models.TextField()
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+    is_read = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name_plural = "Notifications"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.content[:50]}... ({'Read' if self.is_read else 'Unread'})"
