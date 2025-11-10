@@ -389,3 +389,30 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
                 FollowUpRemark.objects.create(followup=instance, content=content.strip())
 
         return instance
+    
+
+#Admission Serializer
+class AdmissionListSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='enquiry.student_name')
+    course_name = serializers.CharField(source='enquiry.course_interested.course_name', allow_null=True)
+    qualification = serializers.CharField(source='enquiry.educational_qualification')
+    phone1 = serializers.CharField(source='enquiry.phone1')
+
+    class Meta:
+        model = Admission
+        fields = [
+            'id', 'admission_date', 'status', 'fee_paid',
+            'student_name', 'course_name', 'qualification', 'phone1'
+        ]
+
+class AdmissionCreateSerializer(serializers.ModelSerializer):
+    enquiry_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=True,
+        help_text="List of enquiry IDs to convert to admissions"
+    )
+
+    class Meta:
+        model = Admission
+        fields = ['enquiry_ids']

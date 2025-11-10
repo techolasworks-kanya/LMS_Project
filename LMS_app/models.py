@@ -117,3 +117,23 @@ class FollowUpRemark(models.Model):
 
     def __str__(self):
         return f"{self.content[:30]}... ({self.added_on.strftime('%d/%m/%Y, %I:%M %p')})"
+
+
+
+
+
+class Admission(models.Model):
+    enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE,related_name='admissions')
+    admission_date = models.DateField(auto_now_add=True)
+    course = models.ForeignKey('course', on_delete=models.SET_NULL,null=True, blank=True)
+    fee_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    status = models.CharField(max_length=20,choices=[('confirmed', 'Confirmed'),('pending', 'Pending'),('cancelled', 'Cancelled'),],default='pending')
+
+    class Meta:
+        verbose_name_plural = "Admissions"
+        ordering = ['-admission_date']
+
+    def __str__(self):
+        return f"Admission: {self.enquiry.student_name} - {self.course}"
+    
+

@@ -412,3 +412,65 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
             "status": "Follow-up and enquiry updated successfully",
             "data": output
         })
+    
+# Admission
+class AdmissionListCreateView(generics.ListCreateAPIView):
+    queryset = Admission.objects.select_related('enquiry', 'enquiry__course_interested')
+    permission_classes = [AllowAny]
+
+    def get_serializer_class(self):
+        return AdmissionListSerializer if self.request.method == 'GET' else AdmissionCreateSerializer
+
+    def perform_create(self, serializer):
+        enquiry_ids = serializer.validated_data.pop('enquiry_ids')
+
+        # Validate enquiries
+        enquiries = Enquiry.objects.filter(
+            id__in=enquiry_ids,
+            follow_up_actions__isnull=True,
+            admissions__isnull=True
+        )
+        found_ids = enquiries.values_list('id', flat=True)
+        missing = set(enquiry_ids) - set(found_ids)
+        if missing:
+            raise serializers.ValidationError({
+                "enquiry_ids": f"Enquiries {list(missing)} not found or already converted."
+            })
+
+        created_admissions = []
+        for enquiry in enquiries:
+            admission = Admission.objects.create(
+                enquiry=enquiry,
+                course=enquiry.course_interested,
+                fee_paid=0.00,           # Default
+                status='pending'         # Default
+            )
+            created_admissions.append(admission)
+
+        # DELETE enquiries
+        enquiries.delete()
+
+        # Store for response
+        self.created_admissions = created_admissions
+
+        # Store for response
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        response_data = AdmissionListSerializer(
+            self.created_admissions, many=True
+        ).data
+
+        return Response({
+            "status": f"{len(self.created_admissions)} admission(s) created successfully",
+            "data": response_data
+        }, status=status.HTTP_201_CREATED)
+
+
+class AdmissionDetailView(generics.RetrieveAPIView):
+    queryset = Admission.objects.select_related('enquiry', 'enquiry__course_interested')
+    serializer_class = AdmissionListSerializer
+    permission_classes = [AllowAny]
