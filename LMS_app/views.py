@@ -327,17 +327,12 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
                 next_followup_date=serializer.validated_data.get('next_followup_date'),
             )
 
-        # Add remarks (distribute across follow-ups or assign to first?)
             if remarks:
                 # Option: assign all remarks to each follow-up
                 for content in remarks:
                     if content.strip():
                         FollowUpRemark.objects.create(followup=followup, content=content.strip())
-                # OR: assign one remark per follow-up (cycle)
-                # remark = remarks.pop(0) if remarks else None
-                # if remark and remark.strip():
-                #     FollowUpRemark.objects.create(followup=followup, content=remark.strip())
-
+              
             created_followups.append(followup)
 
         # DELETE all enquiries
@@ -361,19 +356,59 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
             "data": followup_serializer.data if followup_serializer else None
         }, status=status.HTTP_201_CREATED)
     
+# class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
+#     queryset = FollowUps.objects.select_related('enquiry', 'enquiry__course_interested').prefetch_related('remarks')
+#     serializer_class = FollowUpDetailSerializer
+#     permission_classes = [AllowAny]
+
+#     def update(self, request, *args, **kwargs):
+#         partial = kwargs.pop('partial', False)
+#         instance = self.get_object()
+#         serializer = self.get_serializer(instance, data=request.data, partial=partial)
+#         serializer.is_valid(raise_exception=True)
+#         self.perform_update(serializer)
+
+#         return Response({
+#             "status": "Follow-up updated successfully",
+#             "data": serializer.data
+#         })
 class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = FollowUps.objects.select_related('enquiry', 'enquiry__course_interested').prefetch_related('remarks')
+    queryset = FollowUps.objects.select_related(
+        'enquiry', 'enquiry__course_interested'
+    ).prefetch_related('remarks')
     serializer_class = FollowUpDetailSerializer
     permission_classes = [AllowAny]
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
+        followup = self.get_object()
 
+        serializer = self.get_serializer(followup, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+
+        # Extract remarks
+        remarks = serializer.validated_data.pop('remarks', [])
+
+        # Update FollowUp
+        followup = serializer.save()
+
+        # Update nested Enquiry
+        enquiry_data = serializer.validated_data.pop('enquiry', {})
+        if enquiry_data:
+            enquiry_serializer = EnquiryNestedUpdateSerializer(
+                followup.enquiry, data=enquiry_data, partial=True
+            )
+            enquiry_serializer.is_valid(raise_exception=True)
+            enquiry_serializer.save()
+
+        # Add new remarks
+        for content in remarks:
+            if content.strip():
+                FollowUpRemark.objects.create(followup=followup, content=content.strip())
+
+        # Return full updated data
+        output = self.get_serializer(followup).data
         return Response({
-            "status": "Follow-up updated successfully",
-            "data": serializer.data
+            "status": "Follow-up and enquiry updated successfully",
+            "data": output
         })

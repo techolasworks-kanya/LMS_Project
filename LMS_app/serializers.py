@@ -19,71 +19,6 @@ class CourseListSerializer(serializers.ModelSerializer):
         fields = ['course_name', 'duration', 'course_fee']
         
 
-# class EnquiryCreateSerializer(serializers.ModelSerializer):
-#     course_interested_input = serializers.CharField(
-#         source='course_interested',  required=False,
-#         allow_blank=True,
-#         write_only=True,
-#         help_text="Course name or"
-#     )
-
-#     class Meta:
-#         model = Enquiry
-#         fields = '__all__'
-#         extra_kwargs = {
-#             'student_name': {'required': True},
-#             'phone1': {'required': True},
-#             'educational_qualification': {'required': True},
-#             'heard_from': {'required': True},
-#         }
-
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         required = {'student_name', 'phone1', 'educational_qualification', 'heard_from'}
-#         for name, field in self.fields.items():
-#             if name not in required:
-#                 field.required = False
-#                 field.allow_blank = True
-#                 field.allow_null = True
-
-#     def to_internal_value(self, data):
-#         data = data.copy()
-
-#         nullable_fields = [
-#             'occupation', 'phone2', 'address', 'gender',
-#             'university_college', 'percentage', 'year_of_passing',
-#             'flexible_timings', 'date_of_birth', 'guardian_name', 'email'
-#         ]
-#         for f in nullable_fields:
-#             if f in data and data[f] in ['', None]:
-#                 data[f] = None
-
-#         raw_course = data.pop('course_interested_input', None)
-
-#         if raw_course is not None:
-#             raw_course = str(raw_course).strip()
-
-#             if raw_course == '':
-#                 data['course_interested'] = None
-#             else:
-#                 if raw_course.isdigit():
-#                     try:
-#                         course_obj = course.objects.get(pk=int(raw_course))
-#                         data['course_interested'] = course_obj
-#                     except course.DoesNotExist:
-#                         raise serializers.ValidationError({
-#                             'course_interested_input': f'Course with ID {raw_course} not found.'
-#                         })
-#                 else:
-#                     try:
-#                         course_obj = course.objects.get(course_name__iexact=raw_course)
-#                         data['course_interested'] = course_obj
-#                     except course.DoesNotExist:
-#                         raise serializers.ValidationError({
-#                             'course_interested_input': f'Course "{raw_course}" not found.'
-#                         })
-
-#         return super().to_internal_value(data)
 from rest_framework import serializers
 from .models import Enquiry, course
 
@@ -238,6 +173,7 @@ class FollowUpListSerializer(serializers.ModelSerializer):
     latest_remark = serializers.SerializerMethodField()
     next_followup_date = serializers.DateField(format='%Y-%m-%d', read_only=True)
     status = serializers.CharField()
+    id = serializers.IntegerField()
 
     class Meta:
         model = FollowUps
@@ -269,13 +205,57 @@ class FollowUpListSerializer(serializers.ModelSerializer):
         return None
 
 
+# class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
+#     course_interested_input = serializers.CharField(
+#         source='course_interested',
+#         required=False,
+#         allow_blank=True,
+#         write_only=True,
+#         help_text="Course name (e.g. 'Python Full Stack') or ID (e.g. 5)"
+#     )
+
+#     class Meta:
+#         model = Enquiry
+#         fields = [
+#             'student_name', 'date_of_birth', 'guardian_name', 'occupation',
+#             'phone1', 'phone2', 'email', 'address', 'gender',
+#             'educational_qualification', 'university_college',
+#             'percentage', 'year_of_passing', 'heard_from',
+#             'course_interested_input', 'flexible_timings'
+#         ]
+#         extra_kwargs = {f: {'required': False} for f in fields}
+
+#     def to_internal_value(self, data):
+#         data = data.copy()
+#         raw_course = data.pop('course_interested_input', None)
+
+#         if raw_course is not None:
+#             raw_course = str(raw_course).strip()
+#             if raw_course == '':
+#                 data['course_interested'] = None
+#             elif raw_course.isdigit():
+#                 try:
+#                     data['course_interested'] = course.objects.get(pk=int(raw_course))
+#                 except course.DoesNotExist:
+#                     raise serializers.ValidationError({
+#                         'course_interested_input': f'Course with ID {raw_course} not found.'
+#                     })
+#             else:
+#                 try:
+#                     data['course_interested'] = course.objects.get(course_name__iexact=raw_course)
+#                 except course.DoesNotExist:
+#                     raise serializers.ValidationError({
+#                         'course_interested_input': f'Course "{raw_course}" not found.'
+#                     })
+
+#         return super().to_internal_value(data)
+# serializers.py
 class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
     course_interested_input = serializers.CharField(
-        source='course_interested',
         required=False,
         allow_blank=True,
         write_only=True,
-        help_text="Course name (e.g. 'Python Full Stack') or ID (e.g. 5)"
+        help_text="Course name (e.g. 'Python') or ID (e.g. 5)"
     )
 
     class Meta:
@@ -287,33 +267,29 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
             'percentage', 'year_of_passing', 'heard_from',
             'course_interested_input', 'flexible_timings'
         ]
-        extra_kwargs = {f: {'required': False} for f in fields}
 
     def to_internal_value(self, data):
         data = data.copy()
-        raw_course = data.pop('course_interested_input', None)
-
-        if raw_course is not None:
-            raw_course = str(raw_course).strip()
-            if raw_course == '':
+        raw = data.pop('course_interested_input', None)
+        if raw is not None:
+            raw = str(raw).strip()
+            if raw == '':
                 data['course_interested'] = None
-            elif raw_course.isdigit():
+            elif raw.isdigit():
                 try:
-                    data['course_interested'] = course.objects.get(pk=int(raw_course))
+                    data['course_interested'] = course.objects.get(id=int(raw))
                 except course.DoesNotExist:
                     raise serializers.ValidationError({
-                        'course_interested_input': f'Course with ID {raw_course} not found.'
+                        'course_interested_input': f'Course ID {raw} not found.'
                     })
             else:
                 try:
-                    data['course_interested'] = course.objects.get(course_name__iexact=raw_course)
+                    data['course_interested'] = course.objects.get(course_name__iexact=raw)
                 except course.DoesNotExist:
                     raise serializers.ValidationError({
-                        'course_interested_input': f'Course "{raw_course}" not found.'
+                        'course_interested_input': f'Course "{raw}" not found.'
                     })
-
         return super().to_internal_value(data)
-
 
 
 
@@ -328,30 +304,58 @@ class FollowUpRemarkSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'added_on']
 
 
+# class FollowUpDetailSerializer(serializers.ModelSerializer):
+#     enquiry_ids = serializers.ListField(
+#         child=serializers.IntegerField(),
+#         write_only=True,
+#         required=True,
+#         help_text="List of enquiry IDs to convert to follow-ups"
+#     )
+#     remarks = serializers.ListField(
+#         child=serializers.CharField(max_length=1000, allow_blank=True),
+#         write_only=True,
+#         required=False,
+#         allow_empty=True
+#     )
+
+#     enquiry_data = serializers.SerializerMethodField()
+#     remarks_history = FollowUpRemarkSerializer(many=True, read_only=True, source='remarks')
+
+#     class Meta:
+#         model = FollowUps
+#         fields = [
+#             'enquiry_ids', 'status', 'next_followup_date',
+#             'enquiry_data', 'remarks', 'remarks_history'
+#         ]
+#         read_only_fields = ('enquiry_data', 'remarks_history')
+
+#     def get_enquiry_data(self, obj):
+#         e = obj.enquiry
+#         return {
+#             "student_name": e.student_name,
+#             "phone1": e.phone1,
+#             "course_interested": e.course_interested.course_name if e.course_interested else None,
+#             "heard_from": e.heard_from,
+#             "enquiry_date": str(e.enquiry_date)
+#         }
+
 class FollowUpDetailSerializer(serializers.ModelSerializer):
-    enquiry_ids = serializers.ListField(
-        child=serializers.IntegerField(),
-        write_only=True,
-        required=True,
-        help_text="List of enquiry IDs to convert to follow-ups"
-    )
+    enquiry = EnquiryNestedUpdateSerializer()  # ← writable nested
     remarks = serializers.ListField(
         child=serializers.CharField(max_length=1000, allow_blank=True),
         write_only=True,
-        required=False,
-        allow_empty=True
+        required=False
     )
-
     enquiry_data = serializers.SerializerMethodField()
     remarks_history = FollowUpRemarkSerializer(many=True, read_only=True, source='remarks')
 
     class Meta:
         model = FollowUps
         fields = [
-            'enquiry_ids', 'status', 'next_followup_date',
-            'enquiry_data', 'remarks', 'remarks_history'
+            'id', 'followup_date', 'status', 'next_followup_date',
+            'enquiry', 'enquiry_data', 'remarks', 'remarks_history'
         ]
-        read_only_fields = ('enquiry_data', 'remarks_history')
+        read_only_fields = ('id', 'followup_date', 'enquiry_data', 'remarks_history')
 
     def get_enquiry_data(self, obj):
         e = obj.enquiry
@@ -362,3 +366,26 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
             "heard_from": e.heard_from,
             "enquiry_date": str(e.enquiry_date)
         }
+
+    # === FIXED: Custom update() for nested fields ===
+    def update(self, instance, validated_data):
+        # 1. Update FollowUp fields
+        instance.status = validated_data.get('status', instance.status)
+        instance.next_followup_date = validated_data.get('next_followup_date', instance.next_followup_date)
+        instance.save()
+
+        # 2. Update nested Enquiry
+        enquiry_data = validated_data.pop('enquiry', {})
+        if enquiry_data:
+            enquiry = instance.enquiry
+            enquiry_serializer = EnquiryNestedUpdateSerializer(enquiry, data=enquiry_data, partial=True)
+            enquiry_serializer.is_valid(raise_exception=True)
+            enquiry_serializer.save()
+
+        # 3. Add new remarks
+        remarks = validated_data.pop('remarks', [])
+        for content in remarks:
+            if content.strip():
+                FollowUpRemark.objects.create(followup=instance, content=content.strip())
+
+        return instance
