@@ -139,7 +139,7 @@ class EnquiryListSerializer(serializers.ModelSerializer):
         model = Enquiry
         fields = [
             'id', 'student_name', 'enquiry_date',
-            'course_interested', 'course_interested_input', 'heard_from'
+            'course_interested', 'course_interested_input', 'heard_from','date_of_birth'
         ]
 
     def get_course_interested_input(self, obj):
