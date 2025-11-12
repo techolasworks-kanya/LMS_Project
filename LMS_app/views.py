@@ -321,180 +321,118 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
             "data": response_data
         }, status=status.HTTP_201_CREATED)
 # Follow-up Detail with nested Enquiry update
+
+# from django.utils.dateparse import parse_date
+# class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
+#     queryset = FollowUps.objects.select_related(
+#         'enquiry', 'enquiry__course_interested'
+#     ).prefetch_related('remarks')
+#     serializer_class = FollowUpDetailSerializer
+#     permission_classes = [AllowAny]
+
+#     def update(self, request, *args, **kwargs):
+#         partial = kwargs.pop('partial', False)
+#         followup = self.get_object()
+#         old_status = followup.status
+
+#         serializer = self.get_serializer(followup, data=request.data, partial=partial)
+#         serializer.is_valid(raise_exception=True)
+
+#         remarks = serializer.validated_data.pop('remarks', [])
+#         enquiry_data = serializer.validated_data.pop('enquiry', {})
+
+#         # UPDATE FOLLOW-UP
+#         followup = serializer.save()
+
+#         # UPDATE NESTED ENQUIRY
+#         if enquiry_data:
+#             enquiry = followup.enquiry
+
+#             # Handle course_interested_input
+#             raw_course = enquiry_data.pop('course_interested_input', None)
+#             if raw_course is not None:
+#                 raw_course = str(raw_course).strip()
+#                 if raw_course:
+#                     if raw_course.isdigit():
+#                         try:
+#                             enquiry.course_interested = course.objects.get(id=int(raw_course))
+#                         except Course.DoesNotExist:
+#                             pass
+#                     else:
+#                         try:
+#                             enquiry.course_interested = course.objects.get(course_name__iexact=raw_course)
+#                         except course.DoesNotExist:
+#                             pass
+#                 else:
+#                     enquiry.course_interested = None
+
+#             # Handle date_of_birth SAFELY
+#             raw_dob = enquiry_data.get('date_of_birth')
+#             if raw_dob is not None:
+#                 raw_dob = str(raw_dob).strip()
+#                 if raw_dob in ['', 'null', 'undefined']:
+#                     enquiry.date_of_birth = None
+#                 else:
+#                     parsed = parse_date(raw_dob)
+#                     if parsed:
+#                         enquiry.date_of_birth = parsed
+#                     else:
+#                         # Try dd-mm-yyyy
+#                         try:
+#                             from datetime import datetime
+#                             parsed = datetime.strptime(raw_dob, '%d-%m-%Y').date()
+#                             enquiry.date_of_birth = parsed
+#                         except ValueError:
+#                             raise ValidationError(
+#                                 "Invalid date_of_birth. Use YYYY-MM-DD or DD-MM-YYYY."
+#                             )
+
+#             # Update all other fields
+#             for field, value in enquiry_data.items():
+#                 if hasattr(enquiry, field):
+#                     cleaned = None if value in ['', 'null', 'undefined'] else value
+#                     setattr(enquiry, field, cleaned)
+#             enquiry.save()
+
+#         # Add remarks
+#         for content in remarks:
+#             if content.strip():
+#                 FollowUpRemark.objects.create(followup=followup, content=content.strip())
+
+#         # NOT INTERESTED LOGIC
+#         if followup.status == 'not_interested' and old_status != 'not_interested':
+#             NotInterestedLead.objects.create(
+#                 followup=followup,
+#                 enquiry=followup.enquiry,
+#                 last_followup_date=followup.followup_date,
+#                 status='not_interested'
+#             )
+#             followup.delete()
+#             return Response({"status": "Moved to Not Interested"})
+
+#         return Response({
+#             "status": "Updated successfully",
+#             "data": self.get_serializer(followup).data
+#         })
+
 class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = FollowUps.objects.select_related(
-        'enquiry', 'enquiry__course_interested'
-    ).prefetch_related('remarks')
+    queryset = FollowUps.objects.select_related('enquiry', 'enquiry__course_interested').prefetch_related('remarks')
     serializer_class = FollowUpDetailSerializer
     permission_classes = [AllowAny]
 
     def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        followup = self.get_object()
-        old_status = followup.status
-
-        serializer = self.get_serializer(followup, data=request.data, partial=partial)
+        partial = kwargs.pop('partial', True)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
-
-        # Extract remarks
-        remarks = serializer.validated_data.pop('remarks', [])
-
-        # Update FollowUp
         followup = serializer.save()
 
-        if enquiry_data:
-            enquiry = followup.enquiry
-
-            # Handle course_interested_input
-            raw_course = enquiry_data.pop('course_interested_input', None)
-            if raw_course is not None:
-                raw_course = str(raw_course).strip()
-                if raw_course:
-                    if raw_course.isdigit():
-                        try:
-                            course_obj = Course.objects.get(id=int(raw_course))
-                            enquiry.course_interested = course_obj
-                        except Course.DoesNotExist:
-                            pass
-                    else:
-                        try:
-                            course_obj = Course.objects.get(course_name__iexact=raw_course)
-                            enquiry.course_interested = course_obj
-                        except Course.DoesNotExist:
-                            pass
-                else:
-                    enquiry.course_interested = None
-
-            # Handle date_of_birth (yyyy-mm-dd → date)
-            raw_dob = enquiry_data.get('date_of_birth')
-            if raw_dob:
-                parsed = parse_date(str(raw_dob))  # Handles yyyy-mm-dd
-                if parsed:
-                    enquiry.date_of_birth = parsed
-                else:
-                    enquiry_data.pop('date_of_birth', None)  # Invalid → ignore
-
-            # Update all other fields
-            for field, value in enquiry_data.items():
-                if hasattr(enquiry, field):
-                    setattr(enquiry, field, value if value != '' else None)
-            enquiry.save()
-
-        # Add remarks
-        for content in remarks:
-            if content.strip():
-                FollowUpRemark.objects.create(followup=followup, content=content.strip())
-
-        # AUTO MOVE TO NOT INTERESTED
-        if followup.status == 'not_interested' and old_status != 'not_interested':
-            NotInterestedLead.objects.create(
-                followup=followup,
-                enquiry=followup.enquiry,
-                last_followup_date=followup.followup_date,
-                status='not_interested'
-            )
-            followup.delete()
-            return Response({"status": "Moved to Not Interested"})
-
+        # RETURN USING LIST SERIALIZER
+        output = FollowUpListSerializer(followup, context={'request': request}).data
         return Response({
-            "status": "Updated successfully",
-            "data": self.get_serializer(followup).data
+            "status": "Follow-up updated successfully",
+            "data": output
         })
-from django.utils.dateparse import parse_date
-class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = FollowUps.objects.select_related(
-        'enquiry', 'enquiry__course_interested'
-    ).prefetch_related('remarks')
-    serializer_class = FollowUpDetailSerializer
-    permission_classes = [AllowAny]
-
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        followup = self.get_object()
-        old_status = followup.status
-
-        serializer = self.get_serializer(followup, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-
-        remarks = serializer.validated_data.pop('remarks', [])
-        enquiry_data = serializer.validated_data.pop('enquiry', {})
-
-        # UPDATE FOLLOW-UP
-        followup = serializer.save()
-
-        # UPDATE NESTED ENQUIRY
-        if enquiry_data:
-            enquiry = followup.enquiry
-
-            # Handle course_interested_input
-            raw_course = enquiry_data.pop('course_interested_input', None)
-            if raw_course is not None:
-                raw_course = str(raw_course).strip()
-                if raw_course:
-                    if raw_course.isdigit():
-                        try:
-                            enquiry.course_interested = course.objects.get(id=int(raw_course))
-                        except Course.DoesNotExist:
-                            pass
-                    else:
-                        try:
-                            enquiry.course_interested = course.objects.get(course_name__iexact=raw_course)
-                        except course.DoesNotExist:
-                            pass
-                else:
-                    enquiry.course_interested = None
-
-            # Handle date_of_birth SAFELY
-            raw_dob = enquiry_data.get('date_of_birth')
-            if raw_dob is not None:
-                raw_dob = str(raw_dob).strip()
-                if raw_dob in ['', 'null', 'undefined']:
-                    enquiry.date_of_birth = None
-                else:
-                    parsed = parse_date(raw_dob)
-                    if parsed:
-                        enquiry.date_of_birth = parsed
-                    else:
-                        # Try dd-mm-yyyy
-                        try:
-                            from datetime import datetime
-                            parsed = datetime.strptime(raw_dob, '%d-%m-%Y').date()
-                            enquiry.date_of_birth = parsed
-                        except ValueError:
-                            raise ValidationError(
-                                "Invalid date_of_birth. Use YYYY-MM-DD or DD-MM-YYYY."
-                            )
-
-            # Update all other fields
-            for field, value in enquiry_data.items():
-                if hasattr(enquiry, field):
-                    cleaned = None if value in ['', 'null', 'undefined'] else value
-                    setattr(enquiry, field, cleaned)
-            enquiry.save()
-
-        # Add remarks
-        for content in remarks:
-            if content.strip():
-                FollowUpRemark.objects.create(followup=followup, content=content.strip())
-
-        # NOT INTERESTED LOGIC
-        if followup.status == 'not_interested' and old_status != 'not_interested':
-            NotInterestedLead.objects.create(
-                followup=followup,
-                enquiry=followup.enquiry,
-                last_followup_date=followup.followup_date,
-                status='not_interested'
-            )
-            followup.delete()
-            return Response({"status": "Moved to Not Interested"})
-
-        return Response({
-            "status": "Updated successfully",
-            "data": self.get_serializer(followup).data
-        })
-
-
-
 # Admission
 class AdmissionListCreateView(generics.ListCreateAPIView):
     queryset = Admission.objects.select_related('enquiry', 'enquiry__course_interested')
@@ -609,6 +547,7 @@ class NotInterestedLeadListView(generics.ListAPIView):
 
 
 # NOTIFICATIONS
+# CREATE
 class NotificationCreateView(generics.CreateAPIView):
     queryset = Notification.objects.all()
     serializer_class = NotificationCreateSerializer
@@ -617,29 +556,55 @@ class NotificationCreateView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        notification = serializer.save()
+        notification = serializer.save(
+            
+            object_id=None,
+            content_type=None
+        )
         return Response({
             "status": "Notification created",
             "data": NotificationSerializer(notification).data
         }, status=status.HTTP_201_CREATED)
 
 
-# ALL NOTIFICATIONS (Read + Unread)
+# ALL NOTIFICATIONS (filtered by module)
 class NotificationAllListView(generics.ListAPIView):
+    serializer_class = NotificationSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        module = self.request.query_params.get('module')
+        queryset = Notification.objects.all()
+        if module:
+            queryset = queryset.filter(module=module)
+        return queryset
+
+
+# UNREAD ONLY (filtered by module)
+class NotificationUnreadListView(generics.ListAPIView):
+    serializer_class = NotificationSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        module = self.request.query_params.get('module')
+        queryset = Notification.objects.filter(is_read=False)
+        if module:
+            queryset = queryset.filter(module=module)
+        return queryset
+
+
+# OPEN → AUTO MARK READ
+class NotificationDetailView(generics.RetrieveAPIView):
     queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
     permission_classes = [AllowAny]
 
-
-# UNREAD ONLY
-class NotificationUnreadListView(generics.ListAPIView):
-    queryset = Notification.objects.filter(is_read=False)
-    serializer_class = NotificationSerializer
-    permission_classes = [AllowAny]
-
-
-# OPEN → AUTO MARK AS READ
-class NotificationDetailView(generics.RetrieveAPIView):
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if not instance.is_read:
+            instance.is_read = True
+            instance.save(update_fields=['is_read'])
+        return Response(NotificationSerializer(instance).data)
     queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
     permission_classes = [AllowAny]

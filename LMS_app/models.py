@@ -165,6 +165,13 @@ choices=[
 
 
 class Notification(models.Model):
+    MODULE_CHOICES = [
+        ('enquiry', 'Enquiry'),
+        ('admission', 'Admission'),
+        ('general', 'General'),
+    ]
+
+    module = models.CharField(max_length=20, choices=MODULE_CHOICES,null=True, blank=True)
     content = models.TextField()
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     is_read = models.BooleanField(default=False)
