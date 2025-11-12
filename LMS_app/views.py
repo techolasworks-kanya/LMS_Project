@@ -543,3 +543,49 @@ class NotInterestedLeadListView(generics.ListAPIView):
         return queryset
     
 
+
+
+
+# NOTIFICATIONS
+class NotificationCreateView(generics.CreateAPIView):
+    queryset = Notification.objects.all()
+    serializer_class = NotificationCreateSerializer
+    permission_classes = [AllowAny]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        notification = serializer.save()
+        return Response({
+            "status": "Notification created",
+            "data": NotificationSerializer(notification).data
+        }, status=status.HTTP_201_CREATED)
+
+
+# ALL NOTIFICATIONS (Read + Unread)
+class NotificationAllListView(generics.ListAPIView):
+    queryset = Notification.objects.all()
+    serializer_class = NotificationSerializer
+    permission_classes = [AllowAny]
+
+
+# UNREAD ONLY
+class NotificationUnreadListView(generics.ListAPIView):
+    queryset = Notification.objects.filter(is_read=False)
+    serializer_class = NotificationSerializer
+    permission_classes = [AllowAny]
+
+
+# OPEN → AUTO MARK AS READ
+class NotificationDetailView(generics.RetrieveAPIView):
+    queryset = Notification.objects.all()
+    serializer_class = NotificationSerializer
+    permission_classes = [AllowAny]
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if not instance.is_read:
+            instance.is_read = True
+            instance.save(update_fields=['is_read'])
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)

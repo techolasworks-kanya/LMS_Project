@@ -39,8 +39,14 @@ urlpatterns = [
     path('api/admissions/<int:pk>', views.AdmissionDetailView.as_view(), name='admission-detail'),
 
 #not interested leads API endpoints
-path('api/not-interested', views.NotInterestedLeadListView.as_view(), name='not-interested-list'),
-path('api/not-interested/create', views.NotInterestedLeadCreateView.as_view(), name='not-interested-create'),
+    path('api/not-interested', views.NotInterestedLeadListView.as_view(), name='not-interested-list'),
+    path('api/not-interested/create', views.NotInterestedLeadCreateView.as_view(), name='not-interested-create'),
+
+# notifications API endpoints
+    path('api/notifications/create', views.NotificationCreateView.as_view(), name='notification-create'),
+    path('api/notifications/all', views.NotificationAllListView.as_view(), name='notification-all'),
+    path('api/notifications/unread', views.NotificationUnreadListView.as_view(), name='notification-unread'),
+    path('api/notifications/<int:pk>', views.NotificationDetailView.as_view(), name='notification-detail'),
 
 
 

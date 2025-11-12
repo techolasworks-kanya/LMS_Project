@@ -193,42 +193,7 @@ class CreateUserSerializer(serializers.ModelSerializer):
 
 
 
-# class FollowUpListSerializer(serializers.ModelSerializer):
-#     enquiry_data = serializers.SerializerMethodField()
-#     followup_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
-#     latest_remark = serializers.SerializerMethodField()
-#     next_followup_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
-#     status = serializers.CharField()
-#     id = serializers.IntegerField()
 
-#     class Meta:
-#         model = FollowUps
-#         fields = [
-#             'id',
-#             'followup_date',
-#             'status',
-#             'next_followup_date',
-#             'enquiry_data',
-#             'latest_remark'
-#         ]
-
-#     def get_enquiry_data(self, obj):
-#         e = obj.enquiry
-#         return {
-#             "student_name": e.student_name,
-#             "phone1": e.phone1,
-#             "course_interested": e.course_interested.course_name if e.course_interested else None,
-#             "heard_from": e.heard_from,
-#         }
-
-#     def get_latest_remark(self, obj):
-#         remark = obj.remarks.first()  # Most recent (ordered by -added_on)
-#         if remark:
-#             return {
-#                 "content": remark.content,
-#                 "added_on": remark.added_on.strftime('%d/%m/%Y, %I:%M %p')
-#             }
-#         return None
 class FollowUpListSerializer(serializers.ModelSerializer):
     followup_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
     next_followup_date = serializers.DateField(format='%d-%m-%Y', allow_null=True, read_only=True)
@@ -328,97 +293,10 @@ class FollowUpRemarkSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'added_on']
 
 
-
-
-# class FollowUpDetailSerializer(serializers.ModelSerializer):
-#     enquiry = EnquiryNestedUpdateSerializer()  # ← writable nested
-#     followup_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
-#     next_followup_date = serializers.DateField(format='%d-%m-%Y', allow_null=True, read_only=True)
-#     remarks = serializers.ListField(
-#         child=serializers.CharField(max_length=1000, allow_blank=True),
-#         write_only=True,
-#         required=False
-#     )
-#     enquiry_data = serializers.SerializerMethodField()
-#     remarks_history = FollowUpRemarkSerializer(many=True, read_only=True, source='remarks')
-
-#     class Meta:
-#         model = FollowUps
-#         fields = [
-#             'id', 'followup_date', 'status', 'next_followup_date',
-#             'enquiry', 'enquiry_data', 'remarks', 'remarks_history'
-#         ]
-#         read_only_fields = ('id', 'followup_date', 'enquiry_data', 'remarks_history')
-
-#     def get_enquiry_data(self, obj):
-#         e = obj.enquiry
-#         return {
-#             "student_name": e.student_name,
-#             "phone1": e.phone1,
-#             "course_interested": e.course_interested.course_name if e.course_interested else None,
-#             "heard_from": e.heard_from,
-#             "enquiry_date": str(e.enquiry_date),
-#             "date_of_birth": e.date_of_birth.strftime('%d-%m-%Y') if e.date_of_birth else None,
-#         }
-
-#     # === FIXED: Custom update() for nested fields ===
-#     def update(self, instance, validated_data):
-#         # 1. Update FollowUp fields
-#         instance.status = validated_data.get('status', instance.status)
-#         instance.next_followup_date = validated_data.get('next_followup_date', instance.next_followup_date)
-#         instance.save()
-
-#         # 2. Update nested Enquiry
-#         enquiry_data = validated_data.pop('enquiry', {})
-#         if enquiry_data:
-#             enquiry = instance.enquiry
-#             enquiry_serializer = EnquiryNestedUpdateSerializer(enquiry, data=enquiry_data, partial=True)
-#             enquiry_serializer.is_valid(raise_exception=True)
-#             enquiry_serializer.save()
-
-#         # 3. Add new remarks
-#         remarks = validated_data.pop('remarks', [])
-#         for content in remarks:
-#             if content.strip():
-#                 FollowUpRemark.objects.create(followup=instance, content=content.strip())
-
-#         return instance
-# class FollowUpDetailSerializer(serializers.ModelSerializer):
-#     # ACCEPT LIST OF IDs
-#     enquiry_ids = serializers.ListField(
-#         child=serializers.IntegerField(),
-#         write_only=True,
-#         required=True,
-#         help_text="List of enquiry IDs to convert to follow-ups"
-#     )
-
-#     remarks = serializers.ListField(
-#         child=serializers.CharField(max_length=1000, allow_blank=True),
-#         write_only=True,
-#         required=False
-#     )
-
-#     enquiry_data = serializers.SerializerMethodField()
-#     remarks_history = FollowUpRemarkSerializer(many=True, read_only=True, source='remarks')
-
-#     class Meta:
-#         model = FollowUps
-#         fields = [
-#             'enquiry_ids', 'status', 'next_followup_date',
-#             'enquiry_data', 'remarks', 'remarks_history'
-#         ]
-#         read_only_fields = ('enquiry_data', 'remarks_history')
-
-#     def get_enquiry_data(self, obj):
-#         e = obj.enquiry
-#         return {
-#             "student_name": e.student_name,
-#             "phone1": e.phone1,
-#             "course_interested": e.course_interested.course_name if e.course_interested else None,
-#             "heard_from": e.heard_from,
-#             "enquiry_date": e.enquiry_date.strftime('%d-%m-%Y')
-#         }   
+  
 class FollowUpDetailSerializer(serializers.ModelSerializer):
+    enquiry_ids = serializers.ListField(child=serializers.IntegerField(),write_only=True,required=True,help_text="List of enquiry IDs to convert to follow-ups"
+    )
     followup_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
     next_followup_date = serializers.DateField(format='%d-%m-%Y', allow_null=True, read_only=True)
     enquiry_data = serializers.SerializerMethodField()
@@ -428,7 +306,7 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
         model = FollowUps
         fields = [
             'id', 'followup_date', 'status', 'next_followup_date',
-            'enquiry_data', 'remarks_history'
+            'enquiry_data', 'remarks_history','enquiry_ids'
         ]
 
     def get_enquiry_data(self, obj):
@@ -511,3 +389,22 @@ class NotInterestedLeadListSerializer(serializers.ModelSerializer):
             'email'
            
         ]
+
+
+
+#notfication APIs
+class NotificationSerializer(serializers.ModelSerializer):
+    created_at = serializers.DateTimeField(
+        format='%d-%m-%Y %I:%M %p',
+        read_only=True
+    )
+
+    class Meta:
+        model = Notification
+        fields = ['id', 'content', 'created_at', 'is_read']
+        read_only_fields = ['created_at', 'is_read']
+
+class NotificationCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ['content']
