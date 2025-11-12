@@ -204,7 +204,7 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
         if self.request.method == 'GET':
             return (
                 Enquiry.objects
-                .filter(follow_up_actions__isnull=True)
+                .filter(follow_up_actions__isnull=True, admissions__isnull=True)
                 .select_related('course_interested')  # This is the fix
                 .order_by('-id')
             )
