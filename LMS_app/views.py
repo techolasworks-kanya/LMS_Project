@@ -321,6 +321,86 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
             "data": response_data
         }, status=status.HTTP_201_CREATED)
 # Follow-up Detail with nested Enquiry update
+# class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
+#     queryset = FollowUps.objects.select_related(
+#         'enquiry', 'enquiry__course_interested'
+#     ).prefetch_related('remarks')
+#     serializer_class = FollowUpDetailSerializer
+#     permission_classes = [AllowAny]
+
+#     def update(self, request, *args, **kwargs):
+#         partial = kwargs.pop('partial', False)
+#         followup = self.get_object()
+#         old_status = followup.status
+
+#         serializer = self.get_serializer(followup, data=request.data, partial=partial)
+#         serializer.is_valid(raise_exception=True)
+
+#         # Extract remarks
+#         remarks = serializer.validated_data.pop('remarks', [])
+
+#         # Update FollowUp
+#         followup = serializer.save()
+
+#         if enquiry_data:
+#             enquiry = followup.enquiry
+
+#             # Handle course_interested_input
+#             raw_course = enquiry_data.pop('course_interested_input', None)
+#             if raw_course is not None:
+#                 raw_course = str(raw_course).strip()
+#                 if raw_course:
+#                     if raw_course.isdigit():
+#                         try:
+#                             course_obj = Course.objects.get(id=int(raw_course))
+#                             enquiry.course_interested = course_obj
+#                         except Course.DoesNotExist:
+#                             pass
+#                     else:
+#                         try:
+#                             course_obj = Course.objects.get(course_name__iexact=raw_course)
+#                             enquiry.course_interested = course_obj
+#                         except Course.DoesNotExist:
+#                             pass
+#                 else:
+#                     enquiry.course_interested = None
+
+#             # Handle date_of_birth (yyyy-mm-dd → date)
+#             raw_dob = enquiry_data.get('date_of_birth')
+#             if raw_dob:
+#                 parsed = parse_date(str(raw_dob))  # Handles yyyy-mm-dd
+#                 if parsed:
+#                     enquiry.date_of_birth = parsed
+#                 else:
+#                     enquiry_data.pop('date_of_birth', None)  # Invalid → ignore
+
+#             # Update all other fields
+#             for field, value in enquiry_data.items():
+#                 if hasattr(enquiry, field):
+#                     setattr(enquiry, field, value if value != '' else None)
+#             enquiry.save()
+
+#         # Add remarks
+#         for content in remarks:
+#             if content.strip():
+#                 FollowUpRemark.objects.create(followup=followup, content=content.strip())
+
+#         # AUTO MOVE TO NOT INTERESTED
+#         if followup.status == 'not_interested' and old_status != 'not_interested':
+#             NotInterestedLead.objects.create(
+#                 followup=followup,
+#                 enquiry=followup.enquiry,
+#                 last_followup_date=followup.followup_date,
+#                 status='not_interested'
+#             )
+#             followup.delete()
+#             return Response({"status": "Moved to Not Interested"})
+
+#         return Response({
+#             "status": "Updated successfully",
+#             "data": self.get_serializer(followup).data
+#         })
+from django.utils.dateparse import parse_date
 class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = FollowUps.objects.select_related(
         'enquiry', 'enquiry__course_interested'
@@ -331,45 +411,90 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         followup = self.get_object()
+        old_status = followup.status
 
         serializer = self.get_serializer(followup, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
 
-        # Extract remarks
         remarks = serializer.validated_data.pop('remarks', [])
+        enquiry_data = serializer.validated_data.pop('enquiry', {})
 
-        # Update FollowUp
+        # UPDATE FOLLOW-UP
         followup = serializer.save()
 
-        # Update nested Enquiry
-        enquiry_data = serializer.validated_data.pop('enquiry', {})
+        # UPDATE NESTED ENQUIRY
         if enquiry_data:
-            enquiry_serializer = EnquiryNestedUpdateSerializer(
-                followup.enquiry, data=enquiry_data, partial=True
-            )
-            enquiry_serializer.is_valid(raise_exception=True)
-            enquiry_serializer.save()
+            enquiry = followup.enquiry
 
-        # Add new remarks
+            # Handle course_interested_input
+            raw_course = enquiry_data.pop('course_interested_input', None)
+            if raw_course is not None:
+                raw_course = str(raw_course).strip()
+                if raw_course:
+                    if raw_course.isdigit():
+                        try:
+                            enquiry.course_interested = course.objects.get(id=int(raw_course))
+                        except Course.DoesNotExist:
+                            pass
+                    else:
+                        try:
+                            enquiry.course_interested = course.objects.get(course_name__iexact=raw_course)
+                        except Course.DoesNotExist:
+                            pass
+                else:
+                    enquiry.course_interested = None
+
+            # Handle date_of_birth SAFELY
+            raw_dob = enquiry_data.get('date_of_birth')
+            if raw_dob is not None:
+                raw_dob = str(raw_dob).strip()
+                if raw_dob in ['', 'null', 'undefined']:
+                    enquiry.date_of_birth = None
+                else:
+                    parsed = parse_date(raw_dob)
+                    if parsed:
+                        enquiry.date_of_birth = parsed
+                    else:
+                        # Try dd-mm-yyyy
+                        try:
+                            from datetime import datetime
+                            parsed = datetime.strptime(raw_dob, '%d-%m-%Y').date()
+                            enquiry.date_of_birth = parsed
+                        except ValueError:
+                            raise ValidationError(
+                                "Invalid date_of_birth. Use YYYY-MM-DD or DD-MM-YYYY."
+                            )
+
+            # Update all other fields
+            for field, value in enquiry_data.items():
+                if hasattr(enquiry, field):
+                    cleaned = None if value in ['', 'null', 'undefined'] else value
+                    setattr(enquiry, field, cleaned)
+            enquiry.save()
+
+        # Add remarks
         for content in remarks:
             if content.strip():
                 FollowUpRemark.objects.create(followup=followup, content=content.strip())
-        
-        # AUTO MOVE TO NOT INTERESTED
+
+        # NOT INTERESTED LOGIC
         if followup.status == 'not_interested' and old_status != 'not_interested':
             NotInterestedLead.objects.create(
                 followup=followup,
                 enquiry=followup.enquiry,
-                last_followup_date=followup.followup_date,  # ← SAVE DATE HERE
+                last_followup_date=followup.followup_date,
                 status='not_interested'
             )
-            followup.delete()  # Safe now
+            followup.delete()
+            return Response({"status": "Moved to Not Interested"})
 
         return Response({
-            "status": "Updated",
-            "archived": True
+            "status": "Updated successfully",
+            "data": self.get_serializer(followup).data
         })
-    
+
+
+
 # Admission
 class AdmissionListCreateView(generics.ListCreateAPIView):
     queryset = Admission.objects.select_related('enquiry', 'enquiry__course_interested')
