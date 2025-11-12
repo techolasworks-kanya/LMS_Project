@@ -31,7 +31,7 @@ class certfication(models.Model):
         return self.certfication_name
 
 class course(models.Model):
-    course_name = models.CharField(max_length=100)
+    course_name = models.CharField(max_length=100, unique=True)
     duration = models.CharField(max_length=50)
     course_fee = models.DecimalField(max_digits=10, decimal_places=2)
     certfication = models.ForeignKey(certfication, on_delete=models.CASCADE, null=True, blank=True)

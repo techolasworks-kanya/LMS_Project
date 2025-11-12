@@ -23,20 +23,110 @@ from rest_framework import serializers
 from .models import Enquiry, course
 from datetime import datetime
 
-class EnquiryCreateSerializer(serializers.ModelSerializer):
-    # INPUT: Accept raw string or ID
-    course_interested_input = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        write_only=True,
-        help_text="Enter course name or ID"
-    )
+# class EnquiryCreateSerializer(serializers.ModelSerializer):
+#     # INPUT: Accept raw string or ID
+#     course_interested_input = serializers.CharField(
+#         required=False,
+#         allow_blank=True,
+#         write_only=True,
+#         help_text="Enter course name or ID"
+#     )
 
-    # OUTPUT: Show course name
-    course_interested = serializers.CharField(
+#     # OUTPUT: Show course name
+#     course_interested = serializers.CharField(
+#         source='course_interested.course_name',
+#         read_only=True,
+#         allow_null=True
+#     )
+
+#     class Meta:
+#         model = Enquiry
+#         fields = '__all__'
+#         extra_kwargs = {
+#             'student_name': {'required': True},
+#             'phone1': {'required': True},
+#             'educational_qualification': {'required': True},
+#             'heard_from': {'required': True},
+#         }
+
+#     def to_internal_value(self, data):
+#         data = dict(data)
+#         raw_dob = data.get('date_of_birth')
+#         if raw_dob:
+#             if isinstance(raw_dob, list):
+#                 raw_dob = raw_dob[0] if raw_dob else ''
+#             raw_dob = str(raw_dob).strip()
+
+#             if raw_dob in ['', 'null', 'undefined']:
+#                 data['date_of_birth'] = None
+#             else:
+#                 # Try dd-mm-yyyy first
+#                 parsed = None
+#                 for fmt in ('%d-%m-%Y', '%Y-%m-%d'):
+#                     try:
+#                         parsed = datetime.strptime(raw_dob, fmt).date()
+#                         break
+#                     except ValueError:
+#                         continue
+#                 if parsed:
+#                     data['date_of_birth'] = parsed
+#                 else:
+#                     raise serializers.ValidationError({
+#                         'date_of_birth': 'Invalid date format. Use dd-mm-yyyy or yyyy-mm-dd.'
+#                     })
+
+#         raw_course = data.get('course_interested_input')
+
+#         if raw_course is not None:
+#             # Handle list from form-data
+#             if isinstance(raw_course, list):
+#                 raw_course = raw_course[0].strip() if raw_course else ''
+#             else:
+#                 raw_course = str(raw_course).strip()
+
+#             if raw_course:
+#                 # Try ID first
+#                 if raw_course.isdigit():
+#                     try:
+#                         course_obj = course.objects.get(id=int(raw_course))
+#                         data['course_interested'] = course_obj
+#                         # Save raw input for _course_input
+#                         data['_course_input'] = raw_course
+#                         data.pop('course_interested_input', None)
+#                         return super().to_internal_value(data)
+#                     except (course.DoesNotExist, ValueError):
+#                         pass
+
+#                 # Try name
+#                 try:
+#                     course_obj = course.objects.get(course_name__iexact=raw_course)
+#                     data['course_interested'] = course_obj
+#                     data['_course_input'] = raw_course
+#                 except course.DoesNotExist:
+#                     raise serializers.ValidationError({
+#                         'course_interested_input': f'Course "{raw_course}" not found.'
+#                     })
+#             else:
+#                 data['course_interested'] = None
+#                 data['_course_input'] = None
+
+#             data.pop('course_interested_input', None)
+
+#         # Clean empty fields
+#         for field in ['date_of_birth', 'guardian_name', 'occupation', 'phone2',
+#                       'email', 'address', 'gender', 'university_college',
+#                       'percentage', 'year_of_passing', 'flexible_timings']:
+#             val = data.get(field)
+#             if isinstance(val, list):
+#                 val = val[0] if val else ''
+#             if str(val).strip() in ['', 'null', 'undefined']:
+#                 data[field] = None
+
+#         return super().to_internal_value(data)
+class EnquiryCreateSerializer(serializers.ModelSerializer):
+    course_name = serializers.CharField(
         source='course_interested.course_name',
-        read_only=True,
-        allow_null=True
+        read_only=True
     )
 
     class Meta:
@@ -51,16 +141,36 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
 
     def to_internal_value(self, data):
         data = dict(data)
+        raw_course = data.get('course_interested')
+
+        if isinstance(raw_course, list):
+            raw_course = raw_course[0]
+        raw_course = str(raw_course or '').strip().strip('"\'')
+        course_obj = None
+
+        if raw_course:
+            if raw_course.isdigit():
+                course_obj = course.objects.filter(pk=int(raw_course)).first()
+            if not course_obj:
+                course_obj = course.objects.filter(course_name__iexact=raw_course).first()
+            if not course_obj:
+                course_obj = course.objects.filter(course_name__icontains=raw_course).first()
+            if not course_obj:
+                available = list(course.objects.values_list('course_name', flat=True))
+                raise serializers.ValidationError({
+                    "course_interested": f'Course "{raw_course}" not found. Available: {available}'
+                })
+            data['course_interested'] = course_obj
+        else:
+            data['course_interested'] = None
+
+        # === Date of birth ===
         raw_dob = data.get('date_of_birth')
         if raw_dob:
             if isinstance(raw_dob, list):
-                raw_dob = raw_dob[0] if raw_dob else ''
+                raw_dob = raw_dob[0]
             raw_dob = str(raw_dob).strip()
-
-            if raw_dob in ['', 'null', 'undefined']:
-                data['date_of_birth'] = None
-            else:
-                # Try dd-mm-yyyy first
+            if raw_dob.lower() not in ['', 'null', 'undefined']:
                 parsed = None
                 for fmt in ('%d-%m-%Y', '%Y-%m-%d'):
                     try:
@@ -68,85 +178,64 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
                         break
                     except ValueError:
                         continue
-                if parsed:
-                    data['date_of_birth'] = parsed
-                else:
+                if not parsed:
                     raise serializers.ValidationError({
-                        'date_of_birth': 'Invalid date format. Use dd-mm-yyyy or yyyy-mm-dd.'
+                        "date_of_birth": "Use dd-mm-yyyy or yyyy-mm-dd format."
                     })
-
-        raw_course = data.get('course_interested_input')
-
-        if raw_course is not None:
-            # Handle list from form-data
-            if isinstance(raw_course, list):
-                raw_course = raw_course[0].strip() if raw_course else ''
+                data['date_of_birth'] = parsed
             else:
-                raw_course = str(raw_course).strip()
+                data['date_of_birth'] = None
 
-            if raw_course:
-                # Try ID first
-                if raw_course.isdigit():
-                    try:
-                        course_obj = course.objects.get(id=int(raw_course))
-                        data['course_interested'] = course_obj
-                        # Save raw input for _course_input
-                        data['_course_input'] = raw_course
-                        data.pop('course_interested_input', None)
-                        return super().to_internal_value(data)
-                    except (course.DoesNotExist, ValueError):
-                        pass
+        # Clean blank/null fields
+        empty_vals = ['', 'null', 'undefined', 'None']
+        for f in [
+            'guardian_name', 'occupation', 'phone2', 'email', 'address',
+            'gender', 'university_college', 'percentage', 'year_of_passing',
+            'flexible_timings'
+        ]:
+            v = data.get(f)
+            if isinstance(v, list):
+                v = v[0]
+            data[f] = None if str(v).strip() in empty_vals else v
 
-                # Try name
-                try:
-                    course_obj = course.objects.get(course_name__iexact=raw_course)
-                    data['course_interested'] = course_obj
-                    data['_course_input'] = raw_course
-                except course.DoesNotExist:
-                    raise serializers.ValidationError({
-                        'course_interested_input': f'Course "{raw_course}" not found.'
-                    })
-            else:
-                data['course_interested'] = None
-                data['_course_input'] = None
-
-            data.pop('course_interested_input', None)
-
-        # Clean empty fields
-        for field in ['date_of_birth', 'guardian_name', 'occupation', 'phone2',
-                      'email', 'address', 'gender', 'university_college',
-                      'percentage', 'year_of_passing', 'flexible_timings']:
-            val = data.get(field)
-            if isinstance(val, list):
-                val = val[0] if val else ''
-            if str(val).strip() in ['', 'null', 'undefined']:
-                data[field] = None
-
-        return super().to_internal_value(data)
-
-
+        return data
+    
 class EnquiryListSerializer(serializers.ModelSerializer):
-    course_interested = serializers.CharField(
+    course_name = serializers.CharField(
         source='course_interested.course_name',
         read_only=True,
         allow_null=True
     )
-    course_interested_input = serializers.SerializerMethodField()
-    enquiry_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
-    date_of_birth = serializers.DateField(format='%d-%m-%Y', read_only=True, allow_null=True)
 
     class Meta:
         model = Enquiry
         fields = [
             'id', 'student_name', 'enquiry_date',
-            'course_interested', 'course_interested_input', 'heard_from','date_of_birth'
+            'course_name', 'heard_from', 'date_of_birth'
         ]
 
-    def get_course_interested_input(self, obj):
-        return getattr(obj, '_course_input', None)
+    
+# class EnquiryListSerializer(serializers.ModelSerializer):
+#     course_interested = serializers.CharField(
+#         source='course_interested.course_name',
+#         read_only=True,
+#         allow_null=True
+#     )
+#     course_interested_input = serializers.SerializerMethodField()
+#     enquiry_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
+#     date_of_birth = serializers.DateField(format='%d-%m-%Y', read_only=True, allow_null=True)
 
+#     class Meta:
+#         model = Enquiry
+#         fields = [
+#             'id', 'student_name', 'enquiry_date',
+#             'course_interested', 'course_interested_input', 'heard_from','date_of_birth'
+#         ]
 
-
+#     def get_course_interested_input(self, obj):
+#         return getattr(obj, '_course_input', None)
+# 
+    
 class CreateUserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
         write_only=True,
@@ -272,12 +361,7 @@ class FollowUpListSerializer(serializers.ModelSerializer):
         return None
 # serializers.py
 class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
-    course_interested_input = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        write_only=True,
-        help_text="course name (e.g. 'Python') or ID (e.g. 5)"
-    )
+   
 
     class Meta:
         model = Enquiry
@@ -286,34 +370,10 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
             'phone1', 'phone2', 'email', 'address', 'gender',
             'educational_qualification', 'university_college',
             'percentage', 'year_of_passing', 'heard_from',
-            'course_interested_input', 'flexible_timings'
+            'flexible_timings'
         ]
 
-    def to_internal_value(self, data):
-        data = data.copy()
-        raw = data.pop('course_interested_input', None)
-        if raw is not None:
-            raw = str(raw).strip()
-            if raw == '':
-                data['course_interested'] = None
-            elif raw.isdigit():
-                try:
-                    data['course_interested'] = course.objects.get(id=int(raw))
-                except course.DoesNotExist:
-                    raise serializers.ValidationError({
-                        'course_interested_input': f'Course ID {raw} not found.'
-                    })
-            else:
-                try:
-                    data['course_interested'] = course.objects.get(course_name__iexact=raw)
-                except course.DoesNotExist:
-                    raise serializers.ValidationError({
-                        'course_interested_input': f'course "{raw}" not found.'
-                    })
-        return super().to_internal_value(data)
-
-
-
+    
 
 # serializers.py
 class FollowUpRemarkSerializer(serializers.ModelSerializer):

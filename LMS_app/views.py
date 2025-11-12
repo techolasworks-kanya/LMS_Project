@@ -196,41 +196,41 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
     permission_classes = [AllowAny]
 
     def get_serializer_class(self):
-        if self.request.method == 'POST':
-            return EnquiryCreateSerializer
-        return EnquiryListSerializer  # For GET
+        return EnquiryCreateSerializer if self.request.method == 'POST' else EnquiryListSerializer
 
     def get_queryset(self):
         if self.request.method == 'GET':
             return (
                 Enquiry.objects
                 .filter(follow_up_actions__isnull=True, admissions__isnull=True)
-                .select_related('course_interested')  # This is the fix
+                .select_related('course_interested')
                 .order_by('-id')
             )
         return super().get_queryset()
 
     def perform_create(self, serializer):
-    # Extract raw input from validated data
-        raw = serializer.validated_data.pop('_course_input', None)
-        enquiry = serializer.save()
-        enquiry._course_input = raw
-        return enquiry
+        return serializer.save()  # <-- Return the created object
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         enquiry = self.perform_create(serializer)
 
-        # Use list serializer for output
-        list_serializer = EnquiryListSerializer(enquiry)
-        return Response(
-            {
-                "status": "Enquiry created successfully",
-                "data": list_serializer.data
-            },
-            status=status.HTTP_201_CREATED
-        )
+        # Use the same serializer for response
+        response_data = {
+            "student_name": enquiry.student_name,
+            "heard_from": enquiry.heard_from,
+            "date_of_birth": enquiry.date_of_birth,
+            "course_interested": (
+                enquiry.course_interested.course_name
+                if enquiry.course_interested else None
+            ),
+        }
+
+        return Response({
+            "status": "Enquiry created successfully",
+            "data": response_data
+        }, status=status.HTTP_201_CREATED)
 class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Enquiry.objects.all()
     serializer_class = EnquiryCreateSerializer
@@ -311,7 +311,6 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
 
-        # Return all created follow-ups
         response_data = FollowUpListSerializer(
             self.created_followups, many=True, context={'request': request}
         ).data
@@ -320,6 +319,8 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
             "status": f"{len(self.created_followups)} follow-up(s) created successfully",
             "data": response_data
         }, status=status.HTTP_201_CREATED)
+    
+
 # Follow-up Detail with nested Enquiry update
 
 # from django.utils.dateparse import parse_date
