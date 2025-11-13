@@ -260,7 +260,7 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
     followup_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
     next_followup_date = serializers.DateField(
         format='%d-%m-%Y',
-        input_formats=['%d-%m-%Y', 'iso-8601'],
+        input_formats=['%d-%m-%Y', '%Y-%m-%d'],  # Fixed: Accept both formats
         allow_null=True,
         required=False
     )
@@ -270,16 +270,9 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = FollowUps
         fields = [
-            'id',
-            'followup_date',
-            'status',
-            'next_followup_date',
-            'enquiry_data',
-            'remarks_history',
-            # WRITE-ONLY FIELDS (MUST BE IN FIELDS!)
-            'enquiry_ids',
-            'remarks',
-            'enquiry'
+            'id', 'followup_date', 'status', 'next_followup_date',
+            'enquiry_data', 'remarks_history',
+            'enquiry_ids', 'remarks', 'enquiry'
         ]
 
     def get_enquiry_data(self, obj):
@@ -305,7 +298,6 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
         }
 
     def update(self, instance, validated_data):
-        # UPDATE ENQUIRY
         enquiry_data = validated_data.pop('enquiry', None)
         if enquiry_data:
             enquiry_serializer = EnquiryNestedUpdateSerializer(
@@ -314,14 +306,15 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
             enquiry_serializer.is_valid(raise_exception=True)
             enquiry_serializer.save()
 
-        # ADD REMARKS
         remarks = validated_data.pop('remarks', [])
         for content in remarks:
             if content.strip():
                 FollowUpRemark.objects.create(followup=instance, content=content.strip())
 
-        # UPDATE FOLLOW-UP
         return super().update(instance, validated_data)
+
+
+
 #Admission Serializer
 class AdmissionListSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='enquiry.student_name')
