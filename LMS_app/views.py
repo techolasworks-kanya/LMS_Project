@@ -262,7 +262,14 @@ class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
 # Follow-up List and Create
 
 class FollowUpListCreateView(generics.ListCreateAPIView):
-    queryset = FollowUps.objects.select_related('enquiry', 'enquiry__course_interested').prefetch_related('remarks')
+    # queryset = FollowUps.objects.select_related('enquiry', 'enquiry__course_interested').prefetch_related('remarks')
+    def get_queryset(self):
+        """
+        Return Follow-Ups ordered by latest created (highest id first)
+        """
+        return FollowUps.objects.select_related(
+            'enquiry', 'enquiry__course_interested'
+        ).prefetch_related('remarks').order_by('-id')
     permission_classes = [AllowAny]
 
     def get_serializer_class(self):
