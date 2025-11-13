@@ -1,6 +1,16 @@
 from rest_framework import serializers
 from .models import *
 
+
+class LocalDateTimeField(serializers.DateTimeField):
+    def to_representation(self, value):
+        if not value:
+            return None
+        if timezone.is_naive(value):
+            value = timezone.make_aware(value, timezone.get_default_timezone())
+        value = timezone.localtime(value)
+        return super().to_representation(value)
+
 class CertficationSerializer(serializers.ModelSerializer):
     class Meta:
         model = certfication
@@ -161,6 +171,20 @@ class CreateUserSerializer(serializers.ModelSerializer):
     
 
 
+# class FollowUpRemarkSerializer(serializers.ModelSerializer):
+#     added_on = LocalDateTimeField(format='%d/%m/%Y, %I:%M %p', read_only=True)
+
+#     class Meta:
+#         model = FollowUpRemark
+#         fields = ['id', 'content', 'added_on']
+#         read_only_fields = ['id', 'added_on']
+class FollowUpRemarkSerializer(serializers.ModelSerializer):
+    added_on = LocalDateTimeField(format='%d/%m/%Y, %I:%M %p', read_only=True)
+
+    class Meta:
+        model = FollowUpRemark
+        fields = ['id', 'content', 'added_on']
+        read_only_fields = ['id', 'added_on']
 
 
 
@@ -168,7 +192,7 @@ class FollowUpListSerializer(serializers.ModelSerializer):
     followup_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
     next_followup_date = serializers.DateField(format='%d-%m-%Y', allow_null=True, read_only=True)
     enquiry_data = serializers.SerializerMethodField()
-    latest_remark = serializers.SerializerMethodField()
+    latest_remark = FollowUpRemarkSerializer(source='remarks.first', read_only=True)
 
     class Meta:
         model = FollowUps
@@ -229,14 +253,6 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
     
 
 # serializers.py
-class FollowUpRemarkSerializer(serializers.ModelSerializer):
-    added_on = serializers.DateTimeField(format='%d/%m/%Y, %I:%M %p', read_only=True)
-
-    class Meta:
-        model = FollowUpRemark
-        fields = ['id', 'content', 'added_on']
-        read_only_fields = ['id', 'added_on']
-
 
  
 from datetime import datetime, date
@@ -298,7 +314,23 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
             "flexible_timings": e.flexible_timings
         }
 
+    # def update(self, instance, validated_data):
+    #     enquiry_data = validated_data.pop('enquiry', None)
+    #     if enquiry_data:
+    #         enquiry_serializer = EnquiryNestedUpdateSerializer(
+    #             instance.enquiry, data=enquiry_data, partial=True
+    #         )
+    #         enquiry_serializer.is_valid(raise_exception=True)
+    #         enquiry_serializer.save()
+
+    #     remarks = validated_data.pop('remarks', [])
+    #     for content in remarks:
+    #         if content.strip():
+    #             FollowUpRemark.objects.create(followup=instance, content=content.strip())
+
+    #     return super().update(instance, validated_data)
     def update(self, instance, validated_data):
+    # === ENQUIRY ===
         enquiry_data = validated_data.pop('enquiry', None)
         if enquiry_data:
             enquiry_serializer = EnquiryNestedUpdateSerializer(
@@ -307,11 +339,13 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
             enquiry_serializer.is_valid(raise_exception=True)
             enquiry_serializer.save()
 
+        # === REMARKS ===
         remarks = validated_data.pop('remarks', [])
         for content in remarks:
             if content.strip():
                 FollowUpRemark.objects.create(followup=instance, content=content.strip())
 
+        # === UPDATE FOLLOWUP FIELDS ===
         return super().update(instance, validated_data)
 
 

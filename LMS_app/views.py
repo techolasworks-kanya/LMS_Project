@@ -337,6 +337,25 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = FollowUpDetailSerializer
     permission_classes = [AllowAny]
 
+    # def update(self, request, *args, **kwargs):
+    #     partial = kwargs.pop('partial', True)
+    #     instance = self.get_object()
+    #     serializer = self.get_serializer(instance, data=request.data, partial=partial)
+    #     serializer.is_valid(raise_exception=True)
+    #     followup = serializer.save()
+
+    #     # === CRITICAL FIX: Fully refresh enquiry and course_interested from DB ===
+    #     from django.db import connection
+    #     connection.close()  # Optional: ensure no stale connection
+
+    #     followup.enquiry = Enquiry.objects.select_related('course_interested').get(pk=followup.enquiry.pk)
+
+    #     output = FollowUpListSerializer(followup, context=self.get_serializer_context()).data
+
+    #     return Response({
+    #         "status": "Follow-up updated successfully",
+    #         "data": output
+    #     })
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', True)
         instance = self.get_object()
@@ -344,24 +363,47 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
         serializer.is_valid(raise_exception=True)
         followup = serializer.save()
 
-        # === CRITICAL FIX: Fully refresh enquiry and course_interested from DB ===
-        from django.db import connection
-        connection.close()  # Optional: ensure no stale connection
+        # === FIX: Use serializer.validated_data ===
+        validated_data = serializer.validated_data  # <--- ADD THIS LINE
 
+        # === UPDATE ENQUIRY ===
+        enquiry_data = validated_data.pop('enquiry', None)
+        if enquiry_data:
+            enquiry_serializer = EnquiryNestedUpdateSerializer(
+                instance.enquiry, data=enquiry_data, partial=True
+            )
+            enquiry_serializer.is_valid(raise_exception=True)
+            enquiry_serializer.save()
+
+        # === ADD REMARKS ===
+        remarks = validated_data.pop('remarks', [])
+        for content in remarks:
+            if content.strip():
+                FollowUpRemark.objects.create(followup=instance, content=content.strip())
+
+        # === RE-FETCH WITH FRESH REMARKS & ENQUIRY ===
+        followup = FollowUps.objects.prefetch_related('remarks').get(pk=instance.pk)
         followup.enquiry = Enquiry.objects.select_related('course_interested').get(pk=followup.enquiry.pk)
 
+        # === RETURN USING LIST SERIALIZER ===
         output = FollowUpListSerializer(followup, context=self.get_serializer_context()).data
-
         return Response({
             "status": "Follow-up updated successfully",
             "data": output
         })
     
+    # def destroy(self, request, *args, **kwargs):
+    #     instance = self.get_object()      # the FollowUp
+    #     self.perform_destroy(instance)    # deletes FollowUp → CASCADE deletes Enquiry
+    #     return Response(
+    #         {"status": "Follow-up and related enquiry deleted successfully."},
+    #         status=status.HTTP_204_NO_CONTENT
+    #     )
     def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()      # the FollowUp
-        self.perform_destroy(instance)    # deletes FollowUp → CASCADE deletes Enquiry
+        instance = self.get_object()        # the FollowUp
+        self.perform_destroy(instance)      # ← deletes FollowUp → CASCADE deletes Enquiry
         return Response(
-            {"status": "Follow-up and related enquiry deleted successfully."},
+            {"status": "Follow-up and enquiry deleted successfully."},
             status=status.HTTP_204_NO_CONTENT
         )
 
