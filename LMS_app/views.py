@@ -236,11 +236,11 @@ class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = EnquiryCreateSerializer
     permission_classes = [AllowAny]
 
-    def get_queryset(self):
-        user = self.request.user
-        if user.is_superuser or (user.job_title and user.job_title.lower() == "admin"):
-            return Enquiry.objects.all()
-        return Enquiry.objects.none()
+    # def get_queryset(self):
+    #     user = self.request.user
+    #     if user.is_superuser or (user.job_title and user.job_title.lower() == "admin"):
+    #         return Enquiry.objects.all()
+    #     return Enquiry.objects.none()
 
     def update(self, request, *args, **kwargs):
         response = super().update(request, *args, **kwargs)
