@@ -381,16 +381,31 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
             if content.strip():
                 FollowUpRemark.objects.create(followup=instance, content=content.strip())
 
+        
+
         # === RE-FETCH WITH FRESH REMARKS & ENQUIRY ===
         followup = FollowUps.objects.prefetch_related('remarks').get(pk=instance.pk)
         followup.enquiry = Enquiry.objects.select_related('course_interested').get(pk=followup.enquiry.pk)
 
-        # === RETURN USING LIST SERIALIZER ===
-        output = FollowUpListSerializer(followup, context=self.get_serializer_context()).data
-        return Response({
-            "status": "Follow-up updated successfully",
-            "data": output
-        })
+
+        if followup.status == 'interested':
+            enquiry = followup.enquiry
+
+            # Only create Admission if not already existing
+            if not Admission.objects.filter(enquiry=enquiry).exists():
+                Admission.objects.create(
+                    enquiry=enquiry,
+                    course=enquiry.course_interested,
+                    fee_paid=0.00,
+                    status='pending'
+                )
+
+            followup.delete()
+
+            return Response({
+                "status": "Follow-up marked as 'interested' and moved to Admissions successfully."
+            }, status=status.HTTP_200_OK)
+        
     
     # def destroy(self, request, *args, **kwargs):
     #     instance = self.get_object()      # the FollowUp
@@ -406,6 +421,7 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
             {"status": "Follow-up and enquiry deleted successfully."},
             status=status.HTTP_204_NO_CONTENT
         )
+    
 
 
 
