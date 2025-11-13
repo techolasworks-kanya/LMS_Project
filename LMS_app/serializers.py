@@ -23,106 +23,7 @@ from rest_framework import serializers
 from .models import Enquiry, course
 from datetime import datetime
 
-# class EnquiryCreateSerializer(serializers.ModelSerializer):
-#     # INPUT: Accept raw string or ID
-#     course_interested_input = serializers.CharField(
-#         required=False,
-#         allow_blank=True,
-#         write_only=True,
-#         help_text="Enter course name or ID"
-#     )
 
-#     # OUTPUT: Show course name
-#     course_interested = serializers.CharField(
-#         source='course_interested.course_name',
-#         read_only=True,
-#         allow_null=True
-#     )
-
-#     class Meta:
-#         model = Enquiry
-#         fields = '__all__'
-#         extra_kwargs = {
-#             'student_name': {'required': True},
-#             'phone1': {'required': True},
-#             'educational_qualification': {'required': True},
-#             'heard_from': {'required': True},
-#         }
-
-#     def to_internal_value(self, data):
-#         data = dict(data)
-#         raw_dob = data.get('date_of_birth')
-#         if raw_dob:
-#             if isinstance(raw_dob, list):
-#                 raw_dob = raw_dob[0] if raw_dob else ''
-#             raw_dob = str(raw_dob).strip()
-
-#             if raw_dob in ['', 'null', 'undefined']:
-#                 data['date_of_birth'] = None
-#             else:
-#                 # Try dd-mm-yyyy first
-#                 parsed = None
-#                 for fmt in ('%d-%m-%Y', '%Y-%m-%d'):
-#                     try:
-#                         parsed = datetime.strptime(raw_dob, fmt).date()
-#                         break
-#                     except ValueError:
-#                         continue
-#                 if parsed:
-#                     data['date_of_birth'] = parsed
-#                 else:
-#                     raise serializers.ValidationError({
-#                         'date_of_birth': 'Invalid date format. Use dd-mm-yyyy or yyyy-mm-dd.'
-#                     })
-
-#         raw_course = data.get('course_interested_input')
-
-#         if raw_course is not None:
-#             # Handle list from form-data
-#             if isinstance(raw_course, list):
-#                 raw_course = raw_course[0].strip() if raw_course else ''
-#             else:
-#                 raw_course = str(raw_course).strip()
-
-#             if raw_course:
-#                 # Try ID first
-#                 if raw_course.isdigit():
-#                     try:
-#                         course_obj = course.objects.get(id=int(raw_course))
-#                         data['course_interested'] = course_obj
-#                         # Save raw input for _course_input
-#                         data['_course_input'] = raw_course
-#                         data.pop('course_interested_input', None)
-#                         return super().to_internal_value(data)
-#                     except (course.DoesNotExist, ValueError):
-#                         pass
-
-#                 # Try name
-#                 try:
-#                     course_obj = course.objects.get(course_name__iexact=raw_course)
-#                     data['course_interested'] = course_obj
-#                     data['_course_input'] = raw_course
-#                 except course.DoesNotExist:
-#                     raise serializers.ValidationError({
-#                         'course_interested_input': f'Course "{raw_course}" not found.'
-#                     })
-#             else:
-#                 data['course_interested'] = None
-#                 data['_course_input'] = None
-
-#             data.pop('course_interested_input', None)
-
-#         # Clean empty fields
-#         for field in ['date_of_birth', 'guardian_name', 'occupation', 'phone2',
-#                       'email', 'address', 'gender', 'university_college',
-#                       'percentage', 'year_of_passing', 'flexible_timings']:
-#             val = data.get(field)
-#             if isinstance(val, list):
-#                 val = val[0] if val else ''
-#             if str(val).strip() in ['', 'null', 'undefined']:
-#                 data[field] = None
-
-#         return super().to_internal_value(data)
 class EnquiryCreateSerializer(serializers.ModelSerializer):
     course_name = serializers.CharField(
         source='course_interested.course_name',
@@ -215,26 +116,6 @@ class EnquiryListSerializer(serializers.ModelSerializer):
         ]
 
     
-# class EnquiryListSerializer(serializers.ModelSerializer):
-#     course_interested = serializers.CharField(
-#         source='course_interested.course_name',
-#         read_only=True,
-#         allow_null=True
-#     )
-#     course_interested_input = serializers.SerializerMethodField()
-#     enquiry_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
-#     date_of_birth = serializers.DateField(format='%d-%m-%Y', read_only=True, allow_null=True)
-
-#     class Meta:
-#         model = Enquiry
-#         fields = [
-#             'id', 'student_name', 'enquiry_date',
-#             'course_interested', 'course_interested_input', 'heard_from','date_of_birth'
-#         ]
-
-#     def get_course_interested_input(self, obj):
-#         return getattr(obj, '_course_input', None)
-# 
     
 class CreateUserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
@@ -283,50 +164,6 @@ class CreateUserSerializer(serializers.ModelSerializer):
 
 
 
-# class FollowUpListSerializer(serializers.ModelSerializer):
-#     followup_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
-#     next_followup_date = serializers.DateField(format='%d-%m-%Y', allow_null=True, read_only=True)
-#     enquiry_data = serializers.SerializerMethodField()
-#     latest_remark = serializers.SerializerMethodField()
-
-#     class Meta:
-#         model = FollowUps
-#         fields = [
-#             'id', 'followup_date', 'status', 'next_followup_date',
-#             'enquiry_data', 'latest_remark'
-#         ]
-
-#     def get_enquiry_data(self, obj):
-        
-#         e = obj.enquiry
-#         return {
-#             "student_name": e.student_name,
-#             "date_of_birth": e.date_of_birth.strftime('%d-%m-%Y') if e.date_of_birth else None,
-#             "guardian_name": e.guardian_name,
-#             "occupation": e.occupation,
-#             "phone1": e.phone1,
-#             "phone2": e.phone2,
-#             "email": e.email,
-#             "address": e.address,
-#             "gender": e.gender,
-#             "educational_qualification": e.educational_qualification,
-#             "university_college": e.university_college,
-#             "percentage": e.percentage,
-#             "year_of_passing": e.year_of_passing,
-#             "heard_from": e.heard_from,
-#             "course_interested": e.course_interested.course_name if e.course_interested else None,
-#             "enquiry_date": e.enquiry_date.strftime('%d-%m-%Y'),
-#             "flexible_timings": e.flexible_timings
-#         }
-
-#     def get_latest_remark(self, obj):
-#         remark = obj.remarks.first()
-#         if remark:
-#             return {
-#                 "content": remark.content,
-#                 "added_on": remark.added_on.strftime('%d/%m/%Y, %I:%M %p')
-#             }
-#         return None
 class FollowUpListSerializer(serializers.ModelSerializer):
     followup_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
     next_followup_date = serializers.DateField(format='%d-%m-%Y', allow_null=True, read_only=True)
@@ -337,11 +174,12 @@ class FollowUpListSerializer(serializers.ModelSerializer):
         model = FollowUps
         fields = [
             'id', 'followup_date', 'status', 'next_followup_date',
-            'enquiry_data', 'latest_remark'
+            'enquiry_data', 'latest_remark',
         ]
 
     def get_enquiry_data(self, obj):
-        e = obj.enquiry
+        # e = obj.enquiry
+        e = Enquiry.objects.select_related('course_interested').get(pk=obj.enquiry.pk)
         return {
             "student_name": e.student_name,
             "date_of_birth": e.date_of_birth.strftime('%d-%m-%Y') if e.date_of_birth else None,
@@ -361,6 +199,9 @@ class FollowUpListSerializer(serializers.ModelSerializer):
         return None
 # serializers.py
 class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
+    course_interested = serializers.CharField(
+        required=False, allow_blank=True, write_only=True
+    )
    
 
     class Meta:
@@ -370,8 +211,20 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
             'phone1', 'phone2', 'email', 'address', 'gender',
             'educational_qualification', 'university_college',
             'percentage', 'year_of_passing', 'heard_from',
-            'flexible_timings'
+            'flexible_timings', 'course_interested'
         ]
+    def update(self, instance, validated_data):
+        raw_course_name = validated_data.pop('course_interested', None)
+        if raw_course_name is not None:
+            raw_course_name = raw_course_name.strip()
+            if raw_course_name:
+                # Find or create course
+                course_obj, _ = course.objects.get_or_create(course_name=raw_course_name)
+                validated_data['course_interested'] = course_obj
+            else:
+                validated_data['course_interested'] = None
+
+        return super().update(instance, validated_data)
 
     
 
@@ -387,85 +240,7 @@ class FollowUpRemarkSerializer(serializers.ModelSerializer):
 
  
 from datetime import datetime, date
-# class FollowUpDetailSerializer(serializers.ModelSerializer):
-#     enquiry_ids = serializers.ListField(
-#         child=serializers.IntegerField(),
-#         write_only=True, required=True,
-#         help_text="List of enquiry IDs to convert to follow-ups"
-#     )
-#     remarks = serializers.ListField(
-#         child=serializers.CharField(max_length=1000, allow_blank=True),
-#         write_only=True, required=False
-#     )
 
-#     # NESTED ENQUIRY: write_only + NOT mapped to model
-#     enquiry = serializers.DictField(write_only=True, required=False)
-
-#     followup_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
-#     next_followup_date = serializers.DateField(format='%d-%m-%Y', allow_null=True, read_only=True)
-#     enquiry_data = serializers.SerializerMethodField()
-#     remarks_history = FollowUpRemarkSerializer(many=True, read_only=True, source='remarks')
-
-#     class Meta:
-#         model = FollowUps
-#         fields = [
-#             'id', 'followup_date', 'status', 'next_followup_date',
-#             'enquiry_data', 'remarks_history',
-#             'enquiry_ids', 'remarks', 'enquiry'  # enquiry is write_only
-#         ]
-#         # Prevent serializer from trying to assign to FK
-#         extra_kwargs = {
-#             'enquiry': {'write_only': True}
-#         }
-
-#     def get_enquiry_data(self, obj):
-#         e = obj.enquiry
-
-#         # SAFELY format date_of_birth
-#         dob = e.date_of_birth
-#         dob_str = None
-#         if isinstance(dob, date):
-#             dob_str = dob.strftime('%d-%m-%Y')
-#         elif isinstance(dob, str):
-#             try:
-#                 from datetime import datetime
-#                 parsed = datetime.strptime(dob.strip(), '%Y-%m-%d').date()
-#                 dob_str = parsed.strftime('%d-%m-%Y')
-#             except:
-#                 dob_str = dob  # fallback
-
-#         # SAFELY format enquiry_date
-#         ed = e.enquiry_date
-#         ed_str = None
-#         if isinstance(ed, date):
-#             ed_str = ed.strftime('%d-%m-%Y')
-#         elif isinstance(ed, str):
-#             try:
-#                 from datetime import datetime
-#                 parsed = datetime.strptime(ed.strip(), '%Y-%m-%d').date()
-#                 ed_str = parsed.strftime('%d-%m-%Y')
-#             except:
-#                 ed_str = ed
-
-#         return {
-#             "student_name": e.student_name,
-#             "date_of_birth": dob_str,
-#             "guardian_name": e.guardian_name,
-#             "occupation": e.occupation,
-#             "phone1": e.phone1,
-#             "phone2": e.phone2,
-#             "email": e.email,
-#             "address": e.address,
-#             "gender": e.gender,
-#             "educational_qualification": e.educational_qualification,
-#             "university_college": e.university_college,
-#             "percentage": e.percentage,
-#             "year_of_passing": e.year_of_passing,
-#             "heard_from": e.heard_from,
-#             "course_interested": e.course_interested.course_name if e.course_interested else None,
-#             "enquiry_date": ed_str,
-#             "flexible_timings": e.flexible_timings
-#         }
 class FollowUpDetailSerializer(serializers.ModelSerializer):
     # WRITE-ONLY INPUT FIELDS
     remarks = serializers.ListField(
