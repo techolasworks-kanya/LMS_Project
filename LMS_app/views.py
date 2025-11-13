@@ -264,12 +264,13 @@ class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
 class FollowUpListCreateView(generics.ListCreateAPIView):
     # queryset = FollowUps.objects.select_related('enquiry', 'enquiry__course_interested').prefetch_related('remarks')
     def get_queryset(self):
-        """
-        Return Follow-Ups ordered by latest created (highest id first)
-        """
-        return FollowUps.objects.select_related(
-            'enquiry', 'enquiry__course_interested'
-        ).prefetch_related('remarks').order_by('-id')
+        if self.request.method == 'GET':
+            return FollowUps.objects.select_related(
+                'enquiry', 'enquiry__course_interested'
+            ).prefetch_related('remarks').order_by('-id')
+        return super().get_queryset()
+
+    
     permission_classes = [AllowAny]
 
     def get_serializer_class(self):
@@ -355,6 +356,14 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
             "status": "Follow-up updated successfully",
             "data": output
         })
+    
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()      # the FollowUp
+        self.perform_destroy(instance)    # deletes FollowUp → CASCADE deletes Enquiry
+        return Response(
+            {"status": "Follow-up and related enquiry deleted successfully."},
+            status=status.HTTP_204_NO_CONTENT
+        )
 
 
 

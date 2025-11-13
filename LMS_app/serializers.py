@@ -275,6 +275,7 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
             'enquiry_ids', 'remarks', 'enquiry'
         ]
 
+    
     def get_enquiry_data(self, obj):
         e = obj.enquiry
         return {
