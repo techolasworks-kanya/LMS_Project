@@ -281,10 +281,7 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
         remarks = serializer.validated_data.pop('remarks', [])
 
         # Validate enquiries exist and not already converted
-        enquiries = Enquiry.objects.filter(
-            id__in=enquiry_ids,
-            follow_up_actions__isnull=True
-        )
+        enquiries = Enquiry.objects.filter(id__in=enquiry_ids,follow_up_actions__isnull=True)
         found_ids = enquiries.values_list('id', flat=True)
         missing = set(enquiry_ids) - set(found_ids)
         if missing:
@@ -311,7 +308,6 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
         # DELETE enquiries
         enquiries.delete()
 
-        # Store for response
         self.created_followups = created_followups
 
     def create(self, request, *args, **kwargs):
@@ -404,6 +400,20 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
 
             return Response({
                 "status": "Follow-up marked as 'interested' and moved to Admissions successfully."
+            }, status=status.HTTP_200_OK)
+
+        elif instance.status == "not_interested":
+            NotInterestedLead.objects.create(
+                followup=instance,
+                enquiry=instance.enquiry,
+                last_followup_date=instance.followup_date,
+                status="not_interested",
+                archived_on=timezone.now(),
+            )
+            instance.delete()  # Delete FollowUp
+
+            return Response({
+                "status": "Follow-up marked as 'not interested' and moved to Not Interested Leads successfully."
             }, status=status.HTTP_200_OK)
         
     
