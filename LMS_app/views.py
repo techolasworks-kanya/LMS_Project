@@ -583,33 +583,93 @@ class AdmissionDetailView(generics.RetrieveAPIView):
 
 
 
+# class NotInterestedLeadCreateView(generics.CreateAPIView):
+#     def create(self, request, *args, **kwargs):
+#         followup_id = request.data.get('followup_id')
+#         status = request.data.get('status', 'not_interested')
+
+#         try:
+#             followup = FollowUps.objects.select_related('enquiry').get(id=followup_id)
+#         except FollowUps.DoesNotExist:
+#             return Response({"error": "Follow-up not found"}, status=404)
+
+#         if NotInterestedLead.objects.filter(followup=followup).exists():
+#             return Response({"error": "Already archived"}, status=400)
+
+#         NotInterestedLead.objects.create(
+#             followup=followup,
+#             enquiry=followup.enquiry,
+#             last_followup_date=followup.followup_date,
+#             status=status,
+#             email=followup.enquiry.email
+#         )
+#         followup.delete()
+
+#         return Response({
+#             "status": "Moved to Not Interested",
+#             "student_name": followup.enquiry.student_name
+#         }, status=201)
 class NotInterestedLeadCreateView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
-        followup_id = request.data.get('followup_id')
-        status = request.data.get('status', 'not_interested')
+        followup_ids = request.data.get('followup_ids', None)
 
-        try:
-            followup = FollowUps.objects.select_related('enquiry').get(id=followup_id)
-        except FollowUps.DoesNotExist:
-            return Response({"error": "Follow-up not found"}, status=404)
+        if not followup_ids:
+            return Response(
+                {"error": "'followup_ids' is required"},
+                status=400
+            )
 
-        if NotInterestedLead.objects.filter(followup=followup).exists():
-            return Response({"error": "Already archived"}, status=400)
+        # Ensure list type
+        if not isinstance(followup_ids, list):
+            return Response(
+                {"error": "'followup_ids' must be a list of integers"},
+                status=400
+            )
 
-        NotInterestedLead.objects.create(
-            followup=followup,
-            enquiry=followup.enquiry,
-            last_followup_date=followup.followup_date,
-            status=status,
-            email=followup.enquiry.email
-        )
-        followup.delete()
+        followups = FollowUps.objects.select_related('enquiry').filter(id__in=followup_ids)
+
+        if followups.count() != len(followup_ids):
+            return Response(
+                {"error": "One or more followups not found"},
+                status=404
+            )
+
+        created_records = []
+
+        for followup in followups:
+
+            # ------------------------------------------------------
+            # ❗ MUST BE NOT_INTERESTED — same logic as admissions
+            # ------------------------------------------------------
+            if followup.status != "not_interested":
+                return Response(
+                    {"error": f"Follow-up {followup.id} is not marked as 'not_interested'"},
+                    status=400
+                )
+
+            # Prevent duplicate archive
+            if NotInterestedLead.objects.filter(followup=followup).exists():
+                return Response(
+                    {"error": f"Follow-up {followup.id} already archived"},
+                    status=400
+                )
+
+            record = NotInterestedLead.objects.create(
+                followup=followup,
+                enquiry=followup.enquiry,
+                last_followup_date=followup.followup_date,
+                status="not_interested"
+            )
+
+            created_records.append(record)
+
+            # delete followup from table
+            followup.delete()
 
         return Response({
-            "status": "Moved to Not Interested",
-            "student_name": followup.enquiry.student_name
+            "status": f"{len(created_records)} followup(s) moved to Not Interested",
+            "data": [r.id for r in created_records]
         }, status=201)
-
 
 # LIST with SEARCH
 class NotInterestedLeadListView(generics.ListAPIView):
