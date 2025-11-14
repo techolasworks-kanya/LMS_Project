@@ -357,12 +357,17 @@ class AdmissionListSerializer(serializers.ModelSerializer):
     qualification = serializers.CharField(source='enquiry.educational_qualification')
     phone1 = serializers.CharField(source='enquiry.phone1')
     email = serializers.CharField(source='enquiry.email', allow_null=True)
+    address =serializers.CharField(source='enquiry.address', allow_null=True)
+    gender =serializers.CharField(source='enquiry.gender', allow_null=True)
+    percentage =serializers.FloatField(source='enquiry.percentage', allow_null=True)
+    year_of_passing =serializers.IntegerField(source='enquiry.year_of_passing', allow_null=True)
+
 
     class Meta:
         model = Admission
         fields = [
             'id', 'admission_date', 'status', 'fee_paid',
-            'student_name', 'course_name', 'qualification', 'phone1', 'email'
+            'student_name', 'course_name', 'qualification', 'phone1', 'email','address','gender','percentage','year_of_passing'
         ]
 
 class AdmissionCreateSerializer(serializers.ModelSerializer):
