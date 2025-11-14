@@ -369,14 +369,33 @@ class AdmissionCreateSerializer(serializers.ModelSerializer):
     enquiry_ids = serializers.ListField(
         child=serializers.IntegerField(),
         write_only=True,
-        required=True,
+        required=False,
         help_text="List of enquiry IDs to convert to admissions"
     )
 
+    followup_ids = serializers.ListField(          # <--- ADD THIS
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
+        help_text="List of followup IDs to convert to admissions"
+    )
+
+    def validate(self, attrs):
+        # Must provide either enquiry_ids or followup_id
+        if not attrs.get("enquiry_ids") and not attrs.get("followup_ids"):
+            raise serializers.ValidationError(
+                "Either 'enquiry_ids' or 'followup_id' is required."
+            )
+
+        return attrs
+    
     class Meta:
         model = Admission
-        fields = ['enquiry_ids']
+        fields = ['enquiry_ids','followup_ids']
+    
+  
 
+    
 
 
 # serializers.py

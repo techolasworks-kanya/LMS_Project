@@ -355,14 +355,15 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', True)
         instance = self.get_object()
+
+        # Validate and update followup fields
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         followup = serializer.save()
 
-        # === FIX: Use serializer.validated_data ===
-        validated_data = serializer.validated_data  # <--- ADD THIS LINE
+        validated_data = serializer.validated_data
 
-        # === UPDATE ENQUIRY ===
+        # --- UPDATE ENQUIRY NESTED FIELDS ---
         enquiry_data = validated_data.pop('enquiry', None)
         if enquiry_data:
             enquiry_serializer = EnquiryNestedUpdateSerializer(
@@ -371,50 +372,55 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
             enquiry_serializer.is_valid(raise_exception=True)
             enquiry_serializer.save()
 
-        # === ADD REMARKS ===
+        # --- ADD NEW REMARKS ---
         remarks = validated_data.pop('remarks', [])
         for content in remarks:
             if content.strip():
                 FollowUpRemark.objects.create(followup=instance, content=content.strip())
 
-        
-
-        # === RE-FETCH WITH FRESH REMARKS & ENQUIRY ===
+        # --- RELOAD UPDATED FOLLOW-UP WITH REMARKS & ENQUIRY ---
         followup = FollowUps.objects.prefetch_related('remarks').get(pk=instance.pk)
         followup.enquiry = Enquiry.objects.select_related('course_interested').get(pk=followup.enquiry.pk)
 
+        # --- RETURN SUCCESS RESPONSE ---
+        output = FollowUpListSerializer(followup, context=self.get_serializer_context()).data
 
-        if followup.status == 'interested':
-            enquiry = followup.enquiry
+        return Response({
+            "status": "Follow-up updated successfully",
+            "data": output
+        }, status=status.HTTP_200_OK)
 
-            # Only create Admission if not already existing
-            if not Admission.objects.filter(enquiry=enquiry).exists():
-                Admission.objects.create(
-                    enquiry=enquiry,
-                    course=enquiry.course_interested,
-                    fee_paid=0.00,
-                    status='pending'
-                )
+        # if followup.status == 'interested':
+        #     enquiry = followup.enquiry
 
-            followup.delete()
+        #     # Only create Admission if not already existing
+        #     if not Admission.objects.filter(enquiry=enquiry).exists():
+        #         Admission.objects.create(
+        #             enquiry=enquiry,
+        #             course=enquiry.course_interested,
+        #             fee_paid=0.00,
+        #             status='pending'
+        #         )
 
-            return Response({
-                "status": "Follow-up marked as 'interested' and moved to Admissions successfully."
-            }, status=status.HTTP_200_OK)
+        #     followup.delete()
 
-        elif instance.status == "not_interested":
-            NotInterestedLead.objects.create(
-                followup=instance,
-                enquiry=instance.enquiry,
-                last_followup_date=instance.followup_date,
-                status="not_interested",
-                archived_on=timezone.now(),
-            )
-            instance.delete()  # Delete FollowUp
+        #     return Response({
+        #         "status": "Follow-up marked as 'interested' and moved to Admissions successfully."
+        #     }, status=status.HTTP_200_OK)
 
-            return Response({
-                "status": "Follow-up marked as 'not interested' and moved to Not Interested Leads successfully."
-            }, status=status.HTTP_200_OK)
+        # elif instance.status == "not_interested":
+        #     NotInterestedLead.objects.create(
+        #         followup=instance,
+        #         enquiry=instance.enquiry,
+        #         last_followup_date=instance.followup_date,
+        #         status="not_interested",
+        #         archived_on=timezone.now(),
+        #     )
+        #     instance.delete()  # Delete FollowUp
+
+        #     return Response({
+        #         "status": "Follow-up marked as 'not interested' and moved to Not Interested Leads successfully."
+        #     }, status=status.HTTP_200_OK)
         
     
     # def destroy(self, request, *args, **kwargs):
@@ -444,36 +450,113 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
         return AdmissionListSerializer if self.request.method == 'GET' else AdmissionCreateSerializer
 
     def perform_create(self, serializer):
-        enquiry_ids = serializer.validated_data.pop('enquiry_ids')
+        followup_ids = serializer.validated_data.pop('followup_ids', None)
+        enquiry_ids = serializer.validated_data.pop('enquiry_ids', None)
 
-        # Validate enquiries
-        enquiries = Enquiry.objects.filter(
-            id__in=enquiry_ids,
-            follow_up_actions__isnull=True,
-            admissions__isnull=True
-        )
-        found_ids = enquiries.values_list('id', flat=True)
-        missing = set(enquiry_ids) - set(found_ids)
-        if missing:
-            raise serializers.ValidationError({
-                "enquiry_ids": f"Enquiries {list(missing)} not found or already converted."
-            })
+        # ---------------------------------------------------
+        # 1) FOLLOWUPS → ADMISSIONS
+        # ---------------------------------------------------
+        if followup_ids:
+            followups = FollowUps.objects.filter(id__in=followup_ids)
 
-        created_admissions = []
-        for enquiry in enquiries:
-            admission = Admission.objects.create(
-                enquiry=enquiry,
-                course=enquiry.course_interested,
-                fee_paid=0.00,           # Default
-                status='pending'         # Default
+            if followups.count() != len(followup_ids):
+                raise serializers.ValidationError(
+                    {"followup_ids": "One or more followups do not exist."}
+                )
+
+            created_admissions = []
+
+            for followup in followups:
+                if followup.status != "interested":
+                    raise serializers.ValidationError(
+                        {"followup_ids": f"Follow-up {followup.id} is not 'interested'."}
+                    )
+
+                enquiry = followup.enquiry
+
+                admission = Admission.objects.create(
+                    enquiry=enquiry,
+                    course=enquiry.course_interested,
+                    fee_paid=0,
+                    status="pending"
+                )
+
+                created_admissions.append(admission)
+
+                followup.delete()
+
+            self.created_admissions = created_admissions
+            return
+
+    # ---------------------------------------------------
+    # 2) OLD LOGIC: ENQUIRIES → ADMISSIONS
+    # ---------------------------------------------------
+        if enquiry_ids:
+            enquiries = Enquiry.objects.filter(
+                id__in=enquiry_ids,
+                follow_up_actions__isnull=True,
+                admissions__isnull=True
             )
-            created_admissions.append(admission)
 
-        # DELETE enquiries
-        enquiries.delete()
+            found_ids = enquiries.values_list('id', flat=True)
+            missing = set(enquiry_ids) - set(found_ids)
+            if missing:
+                raise serializers.ValidationError({
+                    "enquiry_ids": f"Enquiries {list(missing)} not found or already converted."
+                })
 
-        # Store for response
-        self.created_admissions = created_admissions
+            created_admissions = []
+
+            for enquiry in enquiries:
+                admission = Admission.objects.create(
+                    enquiry=enquiry,
+                    course=enquiry.course_interested,
+                    fee_paid=0,
+                    status="pending"
+                )
+                created_admissions.append(admission)
+
+            enquiries.delete()
+            self.created_admissions = created_admissions
+            return
+
+        # ---------------------------------------------------
+        # NOTHING PROVIDED
+        # ---------------------------------------------------
+        raise serializers.ValidationError(
+            "Either 'followup_ids' or 'enquiry_ids' is required."
+        )
+
+        # enquiry_ids = serializer.validated_data.pop('enquiry_ids')
+
+        # # Validate enquiries
+        # enquiries = Enquiry.objects.filter(
+        #     id__in=enquiry_ids,
+        #     follow_up_actions__isnull=True,
+        #     admissions__isnull=True
+        # )
+        # found_ids = enquiries.values_list('id', flat=True)
+        # missing = set(enquiry_ids) - set(found_ids)
+        # if missing:
+        #     raise serializers.ValidationError({
+        #         "enquiry_ids": f"Enquiries {list(missing)} not found or already converted."
+        #     })
+
+        # created_admissions = []
+        # for enquiry in enquiries:
+        #     admission = Admission.objects.create(
+        #         enquiry=enquiry,
+        #         course=enquiry.course_interested,
+        #         fee_paid=0.00,           # Default
+        #         status='pending'         # Default
+        #     )
+        #     created_admissions.append(admission)
+
+        # # DELETE enquiries
+        # enquiries.delete()
+
+        # # Store for response
+        # self.created_admissions = created_admissions
 
         # Store for response
 
