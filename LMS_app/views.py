@@ -333,25 +333,6 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = FollowUpDetailSerializer
     permission_classes = [AllowAny]
 
-    # def update(self, request, *args, **kwargs):
-    #     partial = kwargs.pop('partial', True)
-    #     instance = self.get_object()
-    #     serializer = self.get_serializer(instance, data=request.data, partial=partial)
-    #     serializer.is_valid(raise_exception=True)
-    #     followup = serializer.save()
-
-    #     # === CRITICAL FIX: Fully refresh enquiry and course_interested from DB ===
-    #     from django.db import connection
-    #     connection.close()  # Optional: ensure no stale connection
-
-    #     followup.enquiry = Enquiry.objects.select_related('course_interested').get(pk=followup.enquiry.pk)
-
-    #     output = FollowUpListSerializer(followup, context=self.get_serializer_context()).data
-
-    #     return Response({
-    #         "status": "Follow-up updated successfully",
-    #         "data": output
-    #     })
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', True)
         instance = self.get_object()
@@ -378,58 +359,43 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
             if content.strip():
                 FollowUpRemark.objects.create(followup=instance, content=content.strip())
 
-        # --- RELOAD UPDATED FOLLOW-UP WITH REMARKS & ENQUIRY ---
-        followup = FollowUps.objects.prefetch_related('remarks').get(pk=instance.pk)
-        followup.enquiry = Enquiry.objects.select_related('course_interested').get(pk=followup.enquiry.pk)
 
-        # --- RETURN SUCCESS RESPONSE ---
-        output = FollowUpListSerializer(followup, context=self.get_serializer_context()).data
+                # --- 🚨 AUTO MOVE TO NOT INTERESTED + DELETE ENQUIRY 🚨 ---
+        if followup.status == "not_interested":
+            # 1. Create NotInterestedLead
+            NotInterestedLead.objects.create(
+                followup=instance,
+                enquiry=instance.enquiry,
+                last_followup_date=instance.followup_date,
+                status="not_interested",
+                # email=instance.enquiry.email
+            )
 
-        return Response({
-            "status": "Follow-up updated successfully",
-            "data": output
-        }, status=status.HTTP_200_OK)
+            # 2. Delete Enquiry (CASCADE removes followups too)
+            instance.enquiry.delete()
 
-        # if followup.status == 'interested':
-        #     enquiry = followup.enquiry
+            # 3. Delete followup itself
+            instance.delete()
 
-        #     # Only create Admission if not already existing
-        #     if not Admission.objects.filter(enquiry=enquiry).exists():
-        #         Admission.objects.create(
-        #             enquiry=enquiry,
-        #             course=enquiry.course_interested,
-        #             fee_paid=0.00,
-        #             status='pending'
-        #         )
+            return Response({
+                "status": "Moved to Not Interested",
+                "message": "Enquiry and related follow-up removed from main list."
+            }, status=status.HTTP_200_OK)
 
-        #     followup.delete()
+            # --- RELOAD UPDATED FOLLOW-UP WITH REMARKS & ENQUIRY ---
+            followup = FollowUps.objects.prefetch_related('remarks').get(pk=instance.pk)
+            followup.enquiry = Enquiry.objects.select_related('course_interested').get(pk=followup.enquiry.pk)
 
-        #     return Response({
-        #         "status": "Follow-up marked as 'interested' and moved to Admissions successfully."
-        #     }, status=status.HTTP_200_OK)
+            
 
-        # elif instance.status == "not_interested":
-        #     NotInterestedLead.objects.create(
-        #         followup=instance,
-        #         enquiry=instance.enquiry,
-        #         last_followup_date=instance.followup_date,
-        #         status="not_interested",
-        #         archived_on=timezone.now(),
-        #     )
-        #     instance.delete()  # Delete FollowUp
+            # --- RETURN SUCCESS RESPONSE ---
+            output = FollowUpListSerializer(followup, context=self.get_serializer_context()).data
 
-        #     return Response({
-        #         "status": "Follow-up marked as 'not interested' and moved to Not Interested Leads successfully."
-        #     }, status=status.HTTP_200_OK)
-        
-    
-    # def destroy(self, request, *args, **kwargs):
-    #     instance = self.get_object()      # the FollowUp
-    #     self.perform_destroy(instance)    # deletes FollowUp → CASCADE deletes Enquiry
-    #     return Response(
-    #         {"status": "Follow-up and related enquiry deleted successfully."},
-    #         status=status.HTTP_204_NO_CONTENT
-    #     )
+            return Response({
+                "status": "Follow-up updated successfully",
+                "data": output
+            }, status=status.HTTP_200_OK)
+
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()        # the FollowUp
         self.perform_destroy(instance)      # ← deletes FollowUp → CASCADE deletes Enquiry
@@ -601,7 +567,6 @@ class AdmissionDetailView(generics.RetrieveAPIView):
 #             enquiry=followup.enquiry,
 #             last_followup_date=followup.followup_date,
 #             status=status,
-#             email=followup.enquiry.email
 #         )
 #         followup.delete()
 
@@ -638,9 +603,7 @@ class NotInterestedLeadCreateView(generics.CreateAPIView):
 
         for followup in followups:
 
-            # ------------------------------------------------------
-            # ❗ MUST BE NOT_INTERESTED — same logic as admissions
-            # ------------------------------------------------------
+    # Must be not_interested
             if followup.status != "not_interested":
                 return Response(
                     {"error": f"Follow-up {followup.id} is not marked as 'not_interested'"},
@@ -654,6 +617,7 @@ class NotInterestedLeadCreateView(generics.CreateAPIView):
                     status=400
                 )
 
+            # 1. Create NotInterestedLead record
             record = NotInterestedLead.objects.create(
                 followup=followup,
                 enquiry=followup.enquiry,
@@ -663,8 +627,15 @@ class NotInterestedLeadCreateView(generics.CreateAPIView):
 
             created_records.append(record)
 
-            # delete followup from table
+            # SAVE enquiry reference before deleting followup
+            enquiry = followup.enquiry
+
+            # 2. Delete FOLLOWUP (CASCADE will remove NotInterestedLead followup link)
             followup.delete()
+
+            # 3. Delete ENQUIRY (this deletes all nested followups too)
+            enquiry.delete()
+           
 
         return Response({
             "status": f"{len(created_records)} followup(s) moved to Not Interested",

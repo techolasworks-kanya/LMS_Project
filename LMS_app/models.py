@@ -141,7 +141,7 @@ class Admission(models.Model):
     
 
 class NotInterestedLead(models.Model):
-    followup = models.ForeignKey(FollowUps, on_delete=models.SET_NULL,null=True, blank=True,related_name='not_interested_lead')
+    followup = models.ForeignKey(FollowUps, on_delete=models.CASCADE,null=True, blank=True,related_name='not_interested_lead')
     enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE,related_name='not_interested_records')
     last_followup_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20,
