@@ -461,3 +461,22 @@ class NotificationCreateSerializer(serializers.ModelSerializer):
             content=validated_data['content'],
             is_read=False
         )
+    
+
+
+
+#chart serializers
+class ConversionStatsSerializer(serializers.Serializer):
+    month = serializers.CharField()
+    year = serializers.IntegerField()
+    total_enquiries = serializers.IntegerField()
+    total_admissions = serializers.IntegerField()
+
+
+# enquiry source chart serializers
+class EnquirySourceStatsSerializer(serializers.Serializer):
+    month = serializers.CharField()
+    year = serializers.IntegerField()
+    sources = serializers.DictField()
+    top_source = serializers.CharField()
+    top_source_count = serializers.IntegerField()

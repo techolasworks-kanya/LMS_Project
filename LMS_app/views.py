@@ -326,83 +326,6 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
     
 
 
-# class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
-#     queryset = FollowUps.objects.select_related(
-#         'enquiry', 'enquiry__course_interested'
-#     ).prefetch_related('remarks')
-#     serializer_class = FollowUpDetailSerializer
-#     permission_classes = [AllowAny]
-
-#     def update(self, request, *args, **kwargs):
-#         partial = kwargs.pop('partial', True)
-#         instance = self.get_object()
-
-#         # Validate and update followup fields
-#         serializer = self.get_serializer(instance, data=request.data, partial=partial)
-#         serializer.is_valid(raise_exception=True)
-#         followup = serializer.save()
-
-#         validated_data = serializer.validated_data
-
-#         # --- UPDATE ENQUIRY NESTED FIELDS ---
-#         enquiry_data = validated_data.pop('enquiry', None)
-#         if enquiry_data:
-#             enquiry_serializer = EnquiryNestedUpdateSerializer(
-#                 instance.enquiry, data=enquiry_data, partial=True
-#             )
-#             enquiry_serializer.is_valid(raise_exception=True)
-#             enquiry_serializer.save()
-
-#         # --- ADD NEW REMARKS ---
-#         remarks = validated_data.pop('remarks', [])
-#         for content in remarks:
-#             if content.strip():
-#                 FollowUpRemark.objects.create(followup=instance, content=content.strip())
-
-
-#                 # --- 🚨 AUTO MOVE TO NOT INTERESTED + DELETE ENQUIRY 🚨 ---
-#         if followup.status == "not_interested":
-#             # 1. Create NotInterestedLead
-#             NotInterestedLead.objects.create(
-#                 followup=instance,
-#                 enquiry=instance.enquiry,
-#                 last_followup_date=instance.followup_date,
-#                 status="not_interested",
-#                 # email=instance.enquiry.email
-#             )
-
-#             # 2. Delete Enquiry (CASCADE removes followups too)
-#             instance.enquiry.delete()
-
-#             # 3. Delete followup itself
-#             instance.delete()
-
-#             return Response({
-#                 "status": "Moved to Not Interested",
-#                 "message": "Enquiry and related follow-up removed from main list."
-#             }, status=status.HTTP_200_OK)
-
-#             # --- RELOAD UPDATED FOLLOW-UP WITH REMARKS & ENQUIRY ---
-#             followup = FollowUps.objects.prefetch_related('remarks').get(pk=instance.pk)
-#             followup.enquiry = Enquiry.objects.select_related('course_interested').get(pk=followup.enquiry.pk)
-
-            
-
-#             # --- RETURN SUCCESS RESPONSE ---
-#             output = FollowUpListSerializer(followup, context=self.get_serializer_context()).data
-
-#             return Response({
-#                 "status": "Follow-up updated successfully",
-#                 "data": output
-#             }, status=status.HTTP_200_OK)
-
-#     def destroy(self, request, *args, **kwargs):
-#         instance = self.get_object()        # the FollowUp
-#         self.perform_destroy(instance)      # ← deletes FollowUp → CASCADE deletes Enquiry
-#         return Response(
-#             {"status": "Follow-up and enquiry deleted successfully."},
-#             status=status.HTTP_204_NO_CONTENT
-#         )
 class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = FollowUps.objects.select_related(
         'enquiry', 'enquiry__course_interested'
@@ -482,7 +405,19 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 # Admission
 class AdmissionListCreateView(generics.ListCreateAPIView):
-    queryset = Admission.objects.select_related('enquiry', 'enquiry__course_interested')
+    def get_queryset(self):
+        queryset = Admission.objects.select_related('enquiry', 'enquiry__course_interested')
+
+        month = self.request.query_params.get("month")
+        year = self.request.query_params.get("year")
+
+        if month and year:
+            queryset = queryset.filter(
+                admission_date__month=month,
+                admission_date__year=year
+            )
+
+        return queryset
     permission_classes = [AllowAny]
 
     def get_serializer_class(self):
@@ -527,9 +462,7 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
             self.created_admissions = created_admissions
             return
 
-    # ---------------------------------------------------
     # 2) OLD LOGIC: ENQUIRIES → ADMISSIONS
-    # ---------------------------------------------------
         if enquiry_ids:
             enquiries = Enquiry.objects.filter(
                 id__in=enquiry_ids,
@@ -566,39 +499,6 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
             "Either 'followup_ids' or 'enquiry_ids' is required."
         )
 
-        # enquiry_ids = serializer.validated_data.pop('enquiry_ids')
-
-        # # Validate enquiries
-        # enquiries = Enquiry.objects.filter(
-        #     id__in=enquiry_ids,
-        #     follow_up_actions__isnull=True,
-        #     admissions__isnull=True
-        # )
-        # found_ids = enquiries.values_list('id', flat=True)
-        # missing = set(enquiry_ids) - set(found_ids)
-        # if missing:
-        #     raise serializers.ValidationError({
-        #         "enquiry_ids": f"Enquiries {list(missing)} not found or already converted."
-        #     })
-
-        # created_admissions = []
-        # for enquiry in enquiries:
-        #     admission = Admission.objects.create(
-        #         enquiry=enquiry,
-        #         course=enquiry.course_interested,
-        #         fee_paid=0.00,           # Default
-        #         status='pending'         # Default
-        #     )
-        #     created_admissions.append(admission)
-
-        # # DELETE enquiries
-        # enquiries.delete()
-
-        # # Store for response
-        # self.created_admissions = created_admissions
-
-        # Store for response
-
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -620,33 +520,9 @@ class AdmissionDetailView(generics.RetrieveAPIView):
     permission_classes = [AllowAny]
 
 
+#admission excel export view
 
-
-# class NotInterestedLeadCreateView(generics.CreateAPIView):
-#     def create(self, request, *args, **kwargs):
-#         followup_id = request.data.get('followup_id')
-#         status = request.data.get('status', 'not_interested')
-
-#         try:
-#             followup = FollowUps.objects.select_related('enquiry').get(id=followup_id)
-#         except FollowUps.DoesNotExist:
-#             return Response({"error": "Follow-up not found"}, status=404)
-
-#         if NotInterestedLead.objects.filter(followup=followup).exists():
-#             return Response({"error": "Already archived"}, status=400)
-
-#         NotInterestedLead.objects.create(
-#             followup=followup,
-#             enquiry=followup.enquiry,
-#             last_followup_date=followup.followup_date,
-#             status=status,
-#         )
-#         followup.delete()
-
-#         return Response({
-#             "status": "Moved to Not Interested",
-#             "student_name": followup.enquiry.student_name
-#         }, status=201)
+# NOT INTERESTED LEAD
 class NotInterestedLeadCreateView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         followup_ids = request.data.get('followup_ids', None)
@@ -714,11 +590,7 @@ class NotInterestedLeadListView(generics.ListAPIView):
         return queryset
     
 
-
-
-
 # NOTIFICATIONS
-# CREATE
 class NotificationCreateView(generics.CreateAPIView):
     queryset = Notification.objects.all()
     serializer_class = NotificationCreateSerializer
@@ -736,7 +608,6 @@ class NotificationCreateView(generics.CreateAPIView):
             "status": "Notification created",
             "data": NotificationSerializer(notification).data
         }, status=status.HTTP_201_CREATED)
-
 
 # ALL NOTIFICATIONS (filtered by module)
 class NotificationAllListView(generics.ListAPIView):
@@ -787,3 +658,263 @@ class NotificationDetailView(generics.RetrieveAPIView):
             instance.save(update_fields=['is_read'])
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
+    
+
+
+import calendar
+class ConversionStatsView(APIView):
+    def get(self, request):
+
+        # Get current date
+        today = date.today()
+        month = today.month
+        year = today.year
+
+        # Fetch data for current month automatically
+        enquiries = Enquiry.objects.filter(
+            enquiry_date__month=month, enquiry_date__year=year
+        )
+
+        admissions = Admission.objects.filter(
+            admission_date__month=month, admission_date__year=year
+        )
+
+        # Convert month number → month name
+        month_name = calendar.month_name[month]
+
+        data = {
+            "month": month_name,
+            "year": year,
+            "total_enquiries": enquiries.count(),
+            "total_admissions": admissions.count(),
+        }
+
+        serializer = ConversionStatsSerializer(data)
+        return Response(serializer.data)
+
+
+
+
+
+from collections import Counter
+
+class EnquirySourceStatsView(APIView):
+    def get(self, request):
+
+        # Auto-detect current month and year
+        today = date.today()
+        month = today.month
+        year = today.year
+
+        # Get all enquiries for the current month
+        enquiries = Enquiry.objects.filter(
+            enquiry_date__month=month,
+            enquiry_date__year=year
+        )
+
+        # Count by source (heard_from)
+        source_counts = Counter(enq.heard_from for enq in enquiries)
+
+        # Total enquiries of the month
+        total = sum(source_counts.values())
+
+        # Compute percentage + count
+        source_stats = {}
+        for source, count in source_counts.items():
+            percentage = round((count / total) * 100, 2) if total > 0 else 0
+            source_stats[source] = {
+                "count": count,
+                "percentage": percentage
+            }
+
+        # Find top source platform
+        if total > 0:
+            top_source = max(source_counts, key=source_counts.get)
+            top_count = source_counts[top_source]
+        else:
+            top_source = None
+            top_count = 0
+
+        data = {
+            "month": calendar.month_name[month],
+            "year": year,
+            "sources": source_stats,
+            "top_source": top_source,
+            "top_source_count": top_count
+        }
+
+        serializer = EnquirySourceStatsSerializer(data)
+        return Response(serializer.data)
+
+
+
+
+
+
+
+import openpyxl
+from openpyxl.drawing.image import Image as XLImage
+from django.http import HttpResponse
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+class ExportAdmissionExcel(APIView):
+    def post(self, request, *args, **kwargs):
+
+        header_image = request.FILES.get("header_image")
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Admissions"
+
+       
+        total_columns = 6
+        column_width = 35
+
+        for col in range(1, total_columns + 1):
+            ws.column_dimensions[get_column_letter(col)].width = column_width
+
+        if header_image:
+            try:
+                img = XLImage(header_image)
+
+                total_excel_pixels = column_width * total_columns * 6
+                img.width = total_excel_pixels
+
+                ws.row_dimensions[1].height = 55
+                ws.row_dimensions[2].height = 55
+                ws.row_dimensions[3].height = 55
+
+                img.height = 170
+
+                ws.add_image(img, "A1")
+
+            except Exception as e:
+                return Response(
+                    {"error": f"Invalid image file: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            table_start_row = 5
+        else:
+            table_start_row = 1
+
+        # ---------------------------
+        # Table Header Styling
+        # ---------------------------
+        headers = ["Student Name", "Course", "Phone", "Email", "Date"]
+
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill("solid", fgColor="4F81BD")  # Blue header
+        header_align = Alignment(horizontal="center", vertical="center")
+
+        thin_border = Border(
+            left=Side(style="thin"),
+            right=Side(style="thin"),
+            top=Side(style="thin"),
+            bottom=Side(style="thin")
+        )
+
+        # Write header row
+        for col, header in enumerate(headers, start=1):
+            cell = ws.cell(row=table_start_row, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+            cell.border = thin_border
+
+        
+        # Add Admission Data
+        # ---------------------------
+        admissions = Admission.objects.select_related("enquiry")
+
+        row = table_start_row + 1
+
+        for adm in admissions:
+            values = [
+                adm.enquiry.student_name,
+                adm.enquiry.course_interested.course_name if adm.enquiry.course_interested else "",
+                adm.enquiry.phone1,
+                adm.enquiry.email,
+                adm.admission_date.strftime("%d-%m-%Y"),
+            ]
+
+            for col, val in enumerate(values, start=1):
+                cell = ws.cell(row=row, column=col, value=val)
+                cell.border = thin_border
+                cell.alignment = Alignment(vertical="center")
+
+            row += 1
+
+        # Return Excel Download
+        
+        response = HttpResponse(
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = 'attachment; filename="admissions.xlsx"'
+
+        wb.save(response)
+        return response
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

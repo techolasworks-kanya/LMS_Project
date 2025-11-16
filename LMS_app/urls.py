@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from .views import server_running
+from .views import ExportAdmissionExcel
 
 urlpatterns = [
 
@@ -47,6 +48,16 @@ urlpatterns = [
     path('api/notifications/all', views.NotificationAllListView.as_view(), name='notification-all'),
     path('api/notifications/unread', views.NotificationUnreadListView.as_view(), name='notification-unread'),
     path('api/notifications/<int:pk>', views.NotificationDetailView.as_view(), name='notification-detail'),
+
+
+# chart endpoints
+     path('api/conversion-stats', views.ConversionStatsView.as_view(), name='conversion_stats'),
+
+     path('api/enquiry-source-stats', views.EnquirySourceStatsView.as_view(), name='enquiry_source_stats'),
+
+     path("api/admissions/export-excel", ExportAdmissionExcel.as_view(),name="export-excel-dynamic"
+    ),
+
 ]
 
 
