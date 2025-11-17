@@ -152,7 +152,6 @@ class CreateUserSerializer(serializers.ModelSerializer):
         name = validated_data['name']
         job_title = validated_data['job_title']
 
-        # Auto-generate secure password
         password = CustomUser.generate_password()
 
         # Create user
@@ -195,7 +194,6 @@ class FollowUpListSerializer(serializers.ModelSerializer):
         ]
 
     def get_enquiry_data(self, obj):
-        # e = obj.enquiry
         e = Enquiry.objects.select_related('course_interested').get(pk=obj.enquiry.pk)
         return {
             "student_name": e.student_name,
@@ -206,14 +204,14 @@ class FollowUpListSerializer(serializers.ModelSerializer):
             "enquiry_date": e.enquiry_date.strftime('%d-%m-%Y')
         }
 
-    def get_latest_remark(self, obj):
-        remark = obj.remarks.first()
-        if remark:
-            return {
-                "content": remark.content,
-                "added_on": remark.added_on.strftime('%d/%m/%Y, %I:%M %p')
-            }
-        return None
+    # def get_latest_remark(self, obj):
+    #     remark = obj.remarks.first()
+    #     if remark:
+    #         return {
+    #             "content": remark.content,
+    #             "added_on": remark.added_on.strftime('%d/%m/%Y, %I:%M %p')
+    #         }
+    #     return None
 # serializers.py
 class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
     course_interested = serializers.CharField(
@@ -307,21 +305,7 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
             "flexible_timings": e.flexible_timings
         }
 
-    # def update(self, instance, validated_data):
-    #     enquiry_data = validated_data.pop('enquiry', None)
-    #     if enquiry_data:
-    #         enquiry_serializer = EnquiryNestedUpdateSerializer(
-    #             instance.enquiry, data=enquiry_data, partial=True
-    #         )
-    #         enquiry_serializer.is_valid(raise_exception=True)
-    #         enquiry_serializer.save()
-
-    #     remarks = validated_data.pop('remarks', [])
-    #     for content in remarks:
-    #         if content.strip():
-    #             FollowUpRemark.objects.create(followup=instance, content=content.strip())
-
-    #     return super().update(instance, validated_data)
+   
     def update(self, instance, validated_data):
     # === ENQUIRY ===
         enquiry_data = validated_data.pop('enquiry', None)

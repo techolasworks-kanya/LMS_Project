@@ -356,11 +356,11 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
             enquiry_serializer.is_valid(raise_exception=True)
             enquiry_serializer.save()
 
-        # --- ADD NEW REMARKS ---
-        remarks = validated_data.pop('remarks', [])
-        for content in remarks:
-            if content.strip():
-                FollowUpRemark.objects.create(followup=instance, content=content.strip())
+        # # --- ADD NEW REMARKS ---
+        # remarks = validated_data.pop('remarks', [])
+        # for content in remarks:
+        #     if content.strip():
+        #         FollowUpRemark.objects.create(followup=instance, content=content.strip())
 
         
 
