@@ -508,8 +508,25 @@ class AdmissionDetailView(generics.RetrieveAPIView):
     serializer_class = AdmissionListSerializer
     permission_classes = [AllowAny]
 
+class AdmissionDeleteView(generics.DestroyAPIView):
+    queryset = Admission.objects.all()
+    permission_classes = [AllowAny]
 
-#admission excel export view
+    def delete(self, request, *args, **kwargs):
+        instance = self.get_object()
+        enquiry = instance.enquiry
+
+        # delete admission
+        instance.delete()
+
+        # delete enquiry
+        enquiry.delete()
+
+        return Response(
+            {"status": "Admission and enquiry deleted successfully."},
+            status=status.HTTP_200_OK
+        )
+
 
 # NOT INTERESTED LEAD
 class NotInterestedLeadCreateView(generics.CreateAPIView):

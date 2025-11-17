@@ -384,7 +384,6 @@ class AdmissionCreateSerializer(serializers.ModelSerializer):
     
   
 
-    
 
 
 # serializers.py
