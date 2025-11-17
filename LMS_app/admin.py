@@ -9,3 +9,6 @@ admin.site.register(FollowUps)
 admin.site.register(FollowUpRemark)
 admin.site.register(Admission)
 admin.site.register(NotInterestedLead)
+admin.site.register(Notification)
+
+ 

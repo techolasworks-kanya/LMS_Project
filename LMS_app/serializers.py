@@ -171,13 +171,6 @@ class CreateUserSerializer(serializers.ModelSerializer):
     
 
 
-# class FollowUpRemarkSerializer(serializers.ModelSerializer):
-#     added_on = LocalDateTimeField(format='%d/%m/%Y, %I:%M %p', read_only=True)
-
-#     class Meta:
-#         model = FollowUpRemark
-#         fields = ['id', 'content', 'added_on']
-#         read_only_fields = ['id', 'added_on']
 class FollowUpRemarkSerializer(serializers.ModelSerializer):
     added_on = LocalDateTimeField(format='%d/%m/%Y, %I:%M %p', read_only=True)
 

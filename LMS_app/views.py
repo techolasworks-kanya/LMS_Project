@@ -10,6 +10,7 @@ from django.contrib.auth import authenticate, login
 from rest_framework.permissions import AllowAny
 # from django.utils.decorators import method_decorator
 from django.contrib.auth import logout
+# from django.db.models import Q
 
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView  
@@ -200,10 +201,16 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         if self.request.method == 'GET':
+          
             return (
                 Enquiry.objects
-                .filter(follow_up_actions__isnull=True, admissions__isnull=True)
+                .filter(
+                    follow_up_actions__isnull=True,
+                    admissions__isnull=True,
+                    not_interested_records__isnull=True
+                )
                 .select_related('course_interested')
+                .distinct()
                 .order_by('-id')
             )
         return super().get_queryset()
@@ -236,11 +243,7 @@ class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = EnquiryCreateSerializer
     permission_classes = [AllowAny]
 
-    # def get_queryset(self):
-    #     user = self.request.user
-    #     if user.is_superuser or (user.job_title and user.job_title.lower() == "admin"):
-    #         return Enquiry.objects.all()
-    #     return Enquiry.objects.none()
+   
 
     def update(self, request, *args, **kwargs):
         response = super().update(request, *args, **kwargs)
@@ -359,27 +362,7 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
             if content.strip():
                 FollowUpRemark.objects.create(followup=instance, content=content.strip())
 
-        # --- 🚨 AUTO MOVE TO NOT INTERESTED + DELETE ENQUIRY 🚨 ---
-        # if followup.status == "not_interested":
-        #     # 1. Create NotInterestedLead
-        #     NotInterestedLead.objects.create(
-        #         followup=instance,
-        #         enquiry=instance.enquiry,
-        #         last_followup_date=instance.followup_date,
-        #         status="not_interested",
-        #         # email=instance.enquiry.email
-        #     )
-
-        #     # 2. Delete Enquiry (CASCADE removes followups too)
-        #     instance.enquiry.delete()
-
-        #     # 3. Delete followup itself
-        #     instance.delete()
-
-        #     return Response({
-        #         "status": "Moved to Not Interested",
-        #         "message": "Enquiry and related follow-up removed from main list."
-        #     }, status=status.HTTP_200_OK)
+        
 
         # --- RELOAD UPDATED FOLLOW-UP WITH REMARKS & ENQUIRY ---
         followup = FollowUps.objects.prefetch_related('remarks').get(pk=instance.pk)
@@ -458,6 +441,7 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
                 created_admissions.append(admission)
 
                 followup.delete()
+                enquiry.delete()
 
             self.created_admissions = created_admissions
             return
@@ -564,8 +548,13 @@ class NotInterestedLeadCreateView(generics.CreateAPIView):
 
             created_records.append(record)
 
+             # 1️⃣ UPDATE ENQUIRY STATUS
+            followup.enquiry.status = "not_interested"
+            followup.enquiry.save()
+
             # NOW delete only followup (NOT enquiry)
             followup.delete()
+            
 
         return Response({
             "status": "Success",
@@ -856,6 +845,10 @@ class ExportAdmissionExcel(APIView):
 
         wb.save(response)
         return response
+
+
+
+        
 
 
 
