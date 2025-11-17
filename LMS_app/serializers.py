@@ -330,21 +330,28 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
 #Admission Serializer
 class AdmissionListSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(source='enquiry.student_name')
+    date_of_birth = serializers.CharField(source='enquiry.date_of_birth', allow_null=True)
     course_name = serializers.CharField(source='enquiry.course_interested.course_name', allow_null=True)
     qualification = serializers.CharField(source='enquiry.educational_qualification')
     phone1 = serializers.CharField(source='enquiry.phone1')
+    phone2 = serializers.CharField(source='enquiry.phone2', allow_null=True)
     email = serializers.CharField(source='enquiry.email', allow_null=True)
     address =serializers.CharField(source='enquiry.address', allow_null=True)
     gender =serializers.CharField(source='enquiry.gender', allow_null=True)
     percentage =serializers.FloatField(source='enquiry.percentage', allow_null=True)
     year_of_passing =serializers.IntegerField(source='enquiry.year_of_passing', allow_null=True)
-
+    enquiry_date = serializers.DateField(source='enquiry.enquiry_date', format='%d-%m-%Y', read_only=True)
+    enquiry_source = serializers.CharField(source='followup.enquiry_source', allow_null=True)
+    guardian_namae = serializers.CharField(source='followup.enquiry.guardian_name', allow_null=True)
+    guardian_occupation = serializers.CharField(source='followup.guardian_occupation', allow_null=True)
+    university  = serializers.CharField(source='enquiry.university_college', allow_null=True) 
+    flexible_timings = serializers.CharField(source='enquiry.flexible_timings', allow_null=True)
 
     class Meta:
         model = Admission
         fields = [
             'id', 'admission_date', 'status', 'fee_paid',
-            'student_name', 'course_name', 'qualification', 'phone1', 'email','address','gender','percentage','year_of_passing'
+            'student_name','date_of_birth' ,'course_name', 'qualification', 'phone1', 'email','address','gender','percentage','year_of_passing','enquiry_date', 'enquiry_source','phone2','guardian_namae','guardian_occupation', 'university', 'flexible_timings'
         ]
 
 class AdmissionCreateSerializer(serializers.ModelSerializer):
