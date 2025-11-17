@@ -377,8 +377,13 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
         }, status=status.HTTP_200_OK)
 
     def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()        # the FollowUp
-        self.perform_destroy(instance)      # ← deletes FollowUp → CASCADE deletes Enquiry
+        followup = self.get_object()          # the FollowUp
+        enquiry = followup.enquiry 
+        enquiry.delete()
+
+
+        # instance = self.get_object()        # the FollowUp
+        # self.perform_destroy(instance)      # ← deletes FollowUp → CASCADE deletes Enquiry
         return Response(
             {"status": "Follow-up and enquiry deleted successfully."},
             status=status.HTTP_204_NO_CONTENT
