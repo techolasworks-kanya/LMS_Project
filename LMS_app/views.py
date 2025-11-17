@@ -446,7 +446,7 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
                 created_admissions.append(admission)
 
                 followup.delete()
-                enquiry.delete()
+                # enquiry.delete()
 
             self.created_admissions = created_admissions
             return
@@ -477,7 +477,7 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
                 )
                 created_admissions.append(admission)
 
-            enquiries.delete()
+            # enquiries.delete()
             self.created_admissions = created_admissions
             return
 
@@ -512,20 +512,9 @@ class AdmissionDeleteView(generics.DestroyAPIView):
     queryset = Admission.objects.all()
     permission_classes = [AllowAny]
 
-    def delete(self, request, *args, **kwargs):
-        instance = self.get_object()
-        enquiry = instance.enquiry
+    
 
-        # delete admission
-        instance.delete()
-
-        # delete enquiry
-        enquiry.delete()
-
-        return Response(
-            {"status": "Admission and enquiry deleted successfully."},
-            status=status.HTTP_200_OK
-        )
+       
 
 
 # NOT INTERESTED LEAD
