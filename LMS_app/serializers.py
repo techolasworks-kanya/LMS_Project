@@ -439,6 +439,11 @@ class NotificationCreateSerializer(serializers.ModelSerializer):
             is_read=False
         )
     
+class NotificationUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ['is_read'] 
+    
 
 
 

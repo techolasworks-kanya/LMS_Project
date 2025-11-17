@@ -46,8 +46,8 @@ urlpatterns = [
 # notifications API endpoints
     path('api/notifications/create', views.NotificationCreateView.as_view(), name='notification-create'),
     path('api/notifications/all', views.NotificationAllListView.as_view(), name='notification-all'),
-    path('api/notifications/unread', views.NotificationUnreadListView.as_view(), name='notification-unread'),
     path('api/notifications/<int:pk>', views.NotificationDetailView.as_view(), name='notification-detail'),
+    path('api/updatenotification/<int:pk>', views.NotificationUpdateView.as_view(), name='notification-update'),
 
 
 # chart endpoints

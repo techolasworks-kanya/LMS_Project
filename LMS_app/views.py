@@ -616,17 +616,6 @@ class NotificationAllListView(generics.ListAPIView):
         return queryset
 
 
-# UNREAD ONLY (filtered by module)
-class NotificationUnreadListView(generics.ListAPIView):
-    serializer_class = NotificationSerializer
-    permission_classes = [AllowAny]
-
-    def get_queryset(self):
-        module = self.request.query_params.get('module')
-        queryset = Notification.objects.filter(is_read=False)
-        if module:
-            queryset = queryset.filter(module=module)
-        return queryset
 
 
 # OPEN → AUTO MARK READ
@@ -652,7 +641,16 @@ class NotificationDetailView(generics.RetrieveAPIView):
             instance.save(update_fields=['is_read'])
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
-    
+
+
+class NotificationUpdateView(generics.UpdateAPIView):
+        
+    queryset = Notification.objects.all()
+    serializer_class = NotificationUpdateSerializer
+    permission_classes = [AllowAny]
+
+    def patch(self, request, *args, **kwargs):
+        return self.partial_update(request, *args, **kwargs)
 
 
 import calendar
