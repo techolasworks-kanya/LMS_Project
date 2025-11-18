@@ -57,8 +57,10 @@ urlpatterns = [
 
      path('api/enquiry-source-stats', views.EnquirySourceStatsView.as_view(), name='enquiry_source_stats'),
 
-     path("api/admissions/export-excel", ExportAdmissionExcel.as_view(),name="export-excel-dynamic"
-    ),
+     path("api/admissions/export-excel", ExportAdmissionExcel.as_view(),name="export-excel-dynamic"),
+          
+    path('export/enquiry-source-excel', views.ExportEnquirySourceExcel.as_view(), name='export-enquiry-source'),
+    
 
 ]
 
