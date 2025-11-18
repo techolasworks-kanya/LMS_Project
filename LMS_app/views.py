@@ -892,7 +892,6 @@ from django.http import HttpResponse
 from rest_framework.views import APIView
 from .models import Enquiry
 
-
 class ExportEnquirySourceExcel(APIView):
     def post(self, request, *args, **kwargs):
         header_image = request.FILES.get("header_image")
@@ -908,7 +907,6 @@ class ExportEnquirySourceExcel(APIView):
             enquiry_date__month=today.month
         ).select_related('course_interested').order_by('enquiry_date')
 
-        # Create workbook
         wb = Workbook()
         ws = wb.active
         ws.title = "Enquiry Source Tracking"

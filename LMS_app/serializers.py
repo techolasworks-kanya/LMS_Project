@@ -348,7 +348,7 @@ class AdmissionListSerializer(serializers.ModelSerializer):
 
  
     enquiry_source      = serializers.SerializerMethodField()
-    guardian_namae      = serializers.SerializerMethodField()
+    guardian_name      = serializers.SerializerMethodField()
     guardian_occupation = serializers.SerializerMethodField()
 
     class Meta:
@@ -358,7 +358,7 @@ class AdmissionListSerializer(serializers.ModelSerializer):
             'student_name', 'date_of_birth', 'course_name', 'qualification',
             'phone1', 'phone2', 'email', 'address', 'gender',
             'percentage', 'year_of_passing', 'enquiry_date',
-            'enquiry_source', 'guardian_namae', 'guardian_occupation',
+            'enquiry_source', 'guardian_name', 'guardian_occupation',
             'university', 'flexible_timings',
         ]
 
@@ -409,15 +409,28 @@ class AdmissionListSerializer(serializers.ModelSerializer):
     def get_flexible_timings(self, obj):
         return obj.enquiry.flexible_timings if obj.enquiry else None
 
-    # These three fields do not exist on Admission → return None or empty string
+    # def get_enquiry_source(self, obj):
+    #     return None  
     def get_enquiry_source(self, obj):
-        return None   # or "" if you prefer
+        if obj.enquiry and obj.enquiry.heard_from:
+            return obj.enquiry.get_heard_from_display()  # Returns "Walk-in", "Social Media", etc.
+        return "Unknown"
 
-    def get_guardian_namae(self, obj):
-        return None   # or obj.enquiry.guardian_name if it exists on Enquiry
+   
+    def get_guardian_name(self, obj):
+        return obj.enquiry.guardian_name if obj.enquiry and obj.enquiry.guardian_name else "—"
 
+    # def get_guardian_occupation(self, obj):
+    #     return None
     def get_guardian_occupation(self, obj):
-        return None
+        if not obj.enquiry:
+            return "—"
+        # Try to get from latest FollowUp
+        latest_followup = obj.enquiry.follow_up_actions.order_by('-followup_date').first()
+        if latest_followup and latest_followup.guardian_occupation:
+            return latest_followup.guardian_occupation
+        # Fallback to Enquiry.occupation
+        return obj.enquiry.occupation or "—"
 
 class AdmissionCreateSerializer(serializers.ModelSerializer):
     enquiry_ids = serializers.ListField(
