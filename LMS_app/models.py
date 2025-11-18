@@ -126,7 +126,7 @@ class FollowUpRemark(models.Model):
 
 
 class Admission(models.Model):
-    enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE,related_name='admissions')
+    enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE,null=True,related_name='admissions')
     admission_date = models.DateField(auto_now_add=True)
     course = models.ForeignKey('course', on_delete=models.SET_NULL,null=True, blank=True)
     fee_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
@@ -137,7 +137,9 @@ class Admission(models.Model):
         ordering = ['-admission_date']
 
     def __str__(self):
-        return f"Admission: {self.enquiry.student_name} - {self.course}"
+        if self.enquiry and self.enquiry.student_name:
+            return f"Admission: {self.enquiry.student_name} - {self.course or 'No Course'}"
+        return f"Admission ID: {self.id} (Student Deleted)"
     
 
 class NotInterestedLead(models.Model):

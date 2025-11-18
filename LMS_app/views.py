@@ -192,6 +192,7 @@ class CourseDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
         return response
 
+from django.db.models import Exists, OuterRef
 class EnquiryListCreateView(generics.ListCreateAPIView):
     queryset = Enquiry.objects.all()
     permission_classes = [AllowAny]
@@ -199,20 +200,34 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
     def get_serializer_class(self):
         return EnquiryCreateSerializer if self.request.method == 'POST' else EnquiryListSerializer
 
+    # def get_queryset(self):
+    #     if self.request.method == 'GET':
+          
+    #         return (
+    #             Enquiry.objects
+    #             .filter(
+    #                 follow_up_actions__isnull=True,
+    #                 admissions__isnull=True,
+    #                 not_interested_records__isnull=True
+    #             )
+    #             .select_related('course_interested')
+    #             .distinct()
+    #             .order_by('-id')
+    #         )
+    #     return super().get_queryset()
     def get_queryset(self):
         if self.request.method == 'GET':
-          
-            return (
-                Enquiry.objects
-                .filter(
-                    follow_up_actions__isnull=True,
-                    admissions__isnull=True,
-                    not_interested_records__isnull=True
+            # THIS IS THE ONLY LINE THAT MATTERS
+            return Enquiry.objects.annotate(
+                ever_converted=Exists(
+                    FollowUps.objects.filter(enquiry_id=OuterRef('pk'))
+                ) | Exists(
+                    Admission.objects.filter(enquiry_id=OuterRef('pk'))
                 )
-                .select_related('course_interested')
-                .distinct()
-                .order_by('-id')
-            )
+            ).filter(
+                ever_converted=False
+            ).select_related('course_interested').order_by('-id')
+
         return super().get_queryset()
 
     def perform_create(self, serializer):
@@ -382,8 +397,7 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
         enquiry.delete()
 
 
-        # instance = self.get_object()        # the FollowUp
-        # self.perform_destroy(instance)      # ← deletes FollowUp → CASCADE deletes Enquiry
+      
         return Response(
             {"status": "Follow-up and enquiry deleted successfully."},
             status=status.HTTP_204_NO_CONTENT
@@ -502,19 +516,31 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
             "data": response_data
         }, status=status.HTTP_201_CREATED)
 
-
 class AdmissionDetailView(generics.RetrieveAPIView):
     queryset = Admission.objects.select_related('enquiry', 'enquiry__course_interested')
     serializer_class = AdmissionListSerializer
     permission_classes = [AllowAny]
 
-class AdmissionDeleteView(generics.DestroyAPIView):
-    queryset = Admission.objects.all()
+
+class AdmissionDeleteView(APIView):
     permission_classes = [AllowAny]
 
-    
+    def delete(self, request, *args, **kwargs):
+        # Expecting: { "ids": [1, 2, 5] }
+        ids = request.data.get("ids")
 
-       
+        if not ids or not isinstance(ids, list):
+            return Response(
+                {"error": "Provide admission IDs as { \"ids\": [1] } or { \"ids\": [1,2] }"},
+                status=400
+            )
+
+        deleted_count, _ = Admission.objects.filter(id__in=ids).delete()
+
+        return Response(
+            {"message": f"{deleted_count} admission(s) deleted successfully"},
+            status=200
+        )
 
 
 # NOT INTERESTED LEAD

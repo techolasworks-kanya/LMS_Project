@@ -38,7 +38,7 @@ urlpatterns = [
 
     path('api/admissions', views.AdmissionListCreateView.as_view(), name='admission-list-create'),
     path('api/admissions/<int:pk>', views.AdmissionDetailView.as_view(), name='admission-detail'),
-    path('api/admissions/delete/<int:pk>', views.AdmissionDeleteView.as_view()),
+    path('api/admissions/delete-multiple', views.AdmissionDeleteView.as_view()),
 
 
 #not interested leads API endpoints

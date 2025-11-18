@@ -328,31 +328,98 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
 
 
 #Admission Serializer
+
 class AdmissionListSerializer(serializers.ModelSerializer):
-    student_name = serializers.CharField(source='enquiry.student_name')
-    date_of_birth = serializers.CharField(source='enquiry.date_of_birth', allow_null=True)
-    course_name = serializers.CharField(source='enquiry.course_interested.course_name', allow_null=True)
-    qualification = serializers.CharField(source='enquiry.educational_qualification')
-    phone1 = serializers.CharField(source='enquiry.phone1')
-    phone2 = serializers.CharField(source='enquiry.phone2', allow_null=True)
-    email = serializers.CharField(source='enquiry.email', allow_null=True)
-    address =serializers.CharField(source='enquiry.address', allow_null=True)
-    gender =serializers.CharField(source='enquiry.gender', allow_null=True)
-    percentage =serializers.FloatField(source='enquiry.percentage', allow_null=True)
-    year_of_passing =serializers.IntegerField(source='enquiry.year_of_passing', allow_null=True)
-    enquiry_date = serializers.DateField(source='enquiry.enquiry_date', format='%d-%m-%Y', read_only=True)
-    enquiry_source = serializers.CharField(source='followup.enquiry_source', allow_null=True)
-    guardian_namae = serializers.CharField(source='followup.enquiry.guardian_name', allow_null=True)
-    guardian_occupation = serializers.CharField(source='followup.guardian_occupation', allow_null=True)
-    university  = serializers.CharField(source='enquiry.university_college', allow_null=True) 
-    flexible_timings = serializers.CharField(source='enquiry.flexible_timings', allow_null=True)
+    # ----- Safe fields that come from Enquiry (can be None) -----
+    student_name       = serializers.SerializerMethodField()
+    date_of_birth      = serializers.SerializerMethodField()
+    course_name        = serializers.SerializerMethodField()
+    qualification      = serializers.SerializerMethodField()
+    phone1             = serializers.SerializerMethodField()
+    phone2             = serializers.SerializerMethodField()
+    email              = serializers.SerializerMethodField()
+    address            = serializers.SerializerMethodField()
+    gender             = serializers.SerializerMethodField()
+    percentage         = serializers.SerializerMethodField()
+    year_of_passing    = serializers.SerializerMethodField()
+    enquiry_date       = serializers.SerializerMethodField()
+    university         = serializers.SerializerMethodField()
+    flexible_timings   = serializers.SerializerMethodField()
+
+    # ----- Fields that you tried to read from "followup" -----
+    # Admission model has NO followup field → these were always wrong
+    # We'll return null/empty safely
+    enquiry_source      = serializers.SerializerMethodField()
+    guardian_namae      = serializers.SerializerMethodField()
+    guardian_occupation = serializers.SerializerMethodField()
 
     class Meta:
         model = Admission
         fields = [
             'id', 'admission_date', 'status', 'fee_paid',
-            'student_name','date_of_birth' ,'course_name', 'qualification', 'phone1', 'email','address','gender','percentage','year_of_passing','enquiry_date', 'enquiry_source','phone2','guardian_namae','guardian_occupation', 'university', 'flexible_timings'
+            'student_name', 'date_of_birth', 'course_name', 'qualification',
+            'phone1', 'phone2', 'email', 'address', 'gender',
+            'percentage', 'year_of_passing', 'enquiry_date',
+            'enquiry_source', 'guardian_namae', 'guardian_occupation',
+            'university', 'flexible_timings',
         ]
+
+    # ------------------- Safe getters -------------------
+    def get_student_name(self, obj):
+        return obj.enquiry.student_name if obj.enquiry else None
+
+    def get_date_of_birth(self, obj):
+        return obj.enquiry.date_of_birth if obj.enquiry else None
+
+    def get_course_name(self, obj):
+        if obj.enquiry and obj.enquiry.course_interested:
+            return obj.enquiry.course_interested.course_name
+        return None
+
+    def get_qualification(self, obj):
+        return obj.enquiry.educational_qualification if obj.enquiry else None
+
+    def get_phone1(self, obj):
+        return obj.enquiry.phone1 if obj.enquiry else None
+
+    def get_phone2(self, obj):
+        return obj.enquiry.phone2 if obj.enquiry else None
+
+    def get_email(self, obj):
+        return obj.enquiry.email if obj.enquiry else None
+
+    def get_address(self, obj):
+        return obj.enquiry.address if obj.enquiry else None
+
+    def get_gender(self, obj):
+        return obj.enquiry.gender if obj.enquiry else None
+
+    def get_percentage(self, obj):
+        return obj.enquiry.percentage if obj.enquiry else None
+
+    def get_year_of_passing(self, obj):
+        return obj.enquiry.year_of_passing if obj.enquiry else None
+
+    def get_enquiry_date(self, obj):
+        if obj.enquiry and obj.enquiry.enquiry_date:
+            return obj.enquiry.enquiry_date.strftime('%d-%m-%Y')
+        return None
+
+    def get_university(self, obj):
+        return obj.enquiry.university_college if obj.enquiry else None
+
+    def get_flexible_timings(self, obj):
+        return obj.enquiry.flexible_timings if obj.enquiry else None
+
+    # These three fields do not exist on Admission → return None or empty string
+    def get_enquiry_source(self, obj):
+        return None   # or "" if you prefer
+
+    def get_guardian_namae(self, obj):
+        return None   # or obj.enquiry.guardian_name if it exists on Enquiry
+
+    def get_guardian_occupation(self, obj):
+        return None
 
 class AdmissionCreateSerializer(serializers.ModelSerializer):
     enquiry_ids = serializers.ListField(
