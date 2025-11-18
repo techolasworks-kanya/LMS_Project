@@ -29,7 +29,7 @@ class EnquiryAdmin(admin.ModelAdmin):
     status_tag.short_description = "Status"
 
 
-    
+admin.site.register(EnquiryArchive)
 admin.site.register(FollowUps)
 admin.site.register(FollowUpRemark)
 admin.site.register(Admission)

@@ -81,6 +81,54 @@ class Enquiry(models.Model):
     def __str__(self):
         return self.student_name
 
+class EnquiryArchive(models.Model):
+    # NO ForeignKey to Enquiry → completely independent!
+    student_name = models.CharField(max_length=100,null=True, blank=True)
+    date_of_birth = models.DateField(null=True, blank=True)
+    guardian_name = models.CharField(max_length=100, null=True, blank=True)
+    occupation = models.CharField(max_length=100, blank=True, null=True)
+    phone1 = models.CharField(max_length=15, db_index=True)  # for search
+    phone2 = models.CharField(max_length=15, blank=True, null=True)
+    email = models.EmailField(null=True, blank=True)
+    address = models.TextField(null=True, blank=True)
+    gender = models.CharField(max_length=10, choices=[('male','Male'),('female','Female'),('other','Other')], blank=True, null=True)
+    educational_qualification = models.CharField(max_length=200, null=True, blank=True)
+    university_college = models.CharField(max_length=200, null=True, blank=True)
+    percentage = models.FloatField(blank=True, null=True)
+    year_of_passing = models.IntegerField(blank=True, null=True)
+    
+    heard_from = models.CharField(max_length=20, default='walk in', blank=True, null=True)
+    course_interested = models.CharField(max_length=100, null=True, blank=True)  # store name only
+    flexible_timings = models.CharField(max_length=10, blank=True, null=True)
+    
+    enquiry_date = models.DateTimeField(auto_now_add=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    
+    # Track final status
+    final_status = models.CharField( max_length=20,
+        choices=[
+            ('new', 'New Enquiry'),
+            ('followup', 'In Follow-up'),
+            ('admitted', 'Admitted'),
+            ('not_interested', 'Not Interested'),
+            ('lost', 'Lost Lead'),
+        ],
+        default='new'
+    )
+
+    class Meta:
+        verbose_name_plural = "Permanent Enquiry Archives"
+        ordering = ['-archived_at']
+        indexes = [
+            models.Index(fields=['phone1']),
+            models.Index(fields=['student_name']),
+            models.Index(fields=['enquiry_date']),
+        ]
+
+    def __str__(self):
+        return f"{self.student_name} - {self.phone1} - {self.final_status}"
+
+
 #follow-up actions
 from django.utils import timezone
 class FollowUps(models.Model):
@@ -131,6 +179,7 @@ class Admission(models.Model):
     course = models.ForeignKey('course', on_delete=models.SET_NULL,null=True, blank=True)
     fee_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     status = models.CharField(max_length=20,choices=[('confirmed', 'Confirmed'),('pending', 'Pending'),('cancelled', 'Cancelled'),],default='pending')
+    is_deleted = models.BooleanField(default=False)
 
     class Meta:
         verbose_name_plural = "Admissions"

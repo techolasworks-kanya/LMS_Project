@@ -200,25 +200,15 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
     def get_serializer_class(self):
         return EnquiryCreateSerializer if self.request.method == 'POST' else EnquiryListSerializer
 
-    # def get_queryset(self):
-    #     if self.request.method == 'GET':
-          
-    #         return (
-    #             Enquiry.objects
-    #             .filter(
-    #                 follow_up_actions__isnull=True,
-    #                 admissions__isnull=True,
-    #                 not_interested_records__isnull=True
-    #             )
-    #             .select_related('course_interested')
-    #             .distinct()
-    #             .order_by('-id')
-    #         )
-    #     return super().get_queryset()
     def get_queryset(self):
         if self.request.method == 'GET':
-            return Enquiry.objects.select_related('course_interested').order_by('-id')
+            return Enquiry.objects.exclude(
+                admissions__isnull=False   # ← This line is magic
+            ).select_related('course_interested').order_by('-id')
+        
         return super().get_queryset()
+    
+    
 
     def perform_create(self, serializer):
         return serializer.save()  # <-- Return the created object
@@ -398,7 +388,9 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
 # Admission
 class AdmissionListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
-        queryset = Admission.objects.select_related('enquiry', 'enquiry__course_interested')
+        queryset = Admission.objects.select_related(
+            'enquiry', 'enquiry__course_interested'
+        ).filter(is_deleted=False)
 
         month = self.request.query_params.get("month")
         year = self.request.query_params.get("year")
@@ -481,6 +473,8 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
                 )
                 created_admissions.append(admission)
 
+                # enquiry.delete()
+
             # enquiries.delete()
             self.created_admissions = created_admissions
             return
@@ -512,25 +506,40 @@ class AdmissionDetailView(generics.RetrieveAPIView):
     permission_classes = [AllowAny]
 
 
+# class AdmissionDeleteView(APIView):
+#     permission_classes = [AllowAny]
+
+#     def delete(self, request, *args, **kwargs):
+#         # Expecting: { "ids": [1, 2, 5] }
+#         ids = request.data.get("ids")
+
+#         if not ids or not isinstance(ids, list):
+#             return Response(
+#                 {"error": "Provide admission IDs as { \"ids\": [1] } or { \"ids\": [1,2] }"},
+#                 status=400
+#             )
+
+#         deleted_count, _ = Admission.objects.filter(id__in=ids).delete()
+
+#         return Response(
+#             {"message": f"{deleted_count} admission(s) deleted successfully"},
+#             status=200
+#         )
+
 class AdmissionDeleteView(APIView):
     permission_classes = [AllowAny]
 
     def delete(self, request, *args, **kwargs):
-        # Expecting: { "ids": [1, 2, 5] }
-        ids = request.data.get("ids")
+        ids = request.data.get("ids", [])
+        if not ids:
+            return Response({"error": "IDs required"}, status=400)
 
-        if not ids or not isinstance(ids, list):
-            return Response(
-                {"error": "Provide admission IDs as { \"ids\": [1] } or { \"ids\": [1,2] }"},
-                status=400
-            )
-
-        deleted_count, _ = Admission.objects.filter(id__in=ids).delete()
-
-        return Response(
-            {"message": f"{deleted_count} admission(s) deleted successfully"},
-            status=200
-        )
+        # SOFT DELETE — never hard delete
+        updated = Admission.objects.filter(id__in=ids).update(is_deleted=True, status='cancelled')
+        
+        return Response({
+            "message": f"{updated} admission(s) cancelled successfully"
+        }, status=200)
 
 
 # NOT INTERESTED LEAD
@@ -985,67 +994,165 @@ class ExportEnquirySourceExcel(APIView):
         return response
     
 
-from datetime import date
-import calendar
+# from datetime import date
+# import calendar
+# from openpyxl import Workbook
+# from openpyxl.drawing.image import Image as XLImage
+# from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+# from openpyxl.utils import get_column_letter
+# from django.http import HttpResponse
+# from rest_framework.views import APIView
+# from .models import Enquiry
+
+
+# class ExportEnquirySourceExcel(APIView):
+#     def post(self, request, *args, **kwargs):
+#         header_image = request.FILES.get("header_image")
+
+#         # Current month data
+#         today = date.today()
+#         # enquiries = EnquiryArchive.objects.filter(
+#         #     enquiry_date__year=today.year,
+#         #     enquiry_date__month=today.month
+#         # ).select_related('course_interested').order_by('enquiry_date')
+#         enquiries = EnquiryArchive.objects.filter(
+#         enquiry_date__year=today.year,
+#         enquiry_date__month=today.month
+#         ).order_by('enquiry_date')
+
+#         wb = Workbook()
+#         ws = wb.active
+#         ws.title = "Source Tracking"
+
+#         # === TABLE CONFIG (Easy to extend later) ===
+#         headers = ["Sl No", "Student Name", "Course Name", "Source", "Enquiry Date"]
+#         column_widths = [10, 25, 32, 18, 18]   # One width per column
+
+#         total_columns = len(headers)
+
+#         # Set column widths
+#         for i, width in enumerate(column_widths, 1):
+#             ws.column_dimensions[get_column_letter(i)].width = width
+
+#         start_row = 1
+
+#         # === 1. HEADER IMAGE – FULL TABLE WIDTH ===
+#         if header_image:
+#             try:
+#                 img = XLImage(header_image)
+
+#                 # Auto-calculate image width based on total column width
+#                 total_excel_units = sum(column_widths)
+#                 img.width = int(total_excel_units * 7.5)   # 7.5 pixels per unit (perfect fit)
+#                 img.height = 140
+
+#                 ws.row_dimensions[1].height = 105
+#                 ws.add_image(img, "A1")
+#                 start_row = 6  # Table starts right below image
+#             except Exception as e:
+#                 return HttpResponse(f"Image error: {e}", status=400)
+
+#         # === 2. TABLE HEADER (Dark Blue) ===
+#         table_row = start_row
+
+#         header_fill = PatternFill("solid", fgColor="1F4E79")  # Exact dark blue
+#         header_font = Font(bold=True, color="FFFFFF")
+#         border = Border(left=Side("thin"), right=Side("thin"),
+#                         top=Side("thin"), bottom=Side("thin"))
+
+#         for col_num, header in enumerate(headers, 1):
+#             cell = ws.cell(row=table_row, column=col_num, value=header)
+#             cell.fill = header_fill
+#             cell.font = header_font
+#             cell.alignment = Alignment(horizontal="center", vertical="center")
+#             cell.border = border
+
+#         # === 3. DATA ROWS ===
+#         current_row = table_row + 1
+#         for idx, enq in enumerate(enquiries, start=1):
+#             course = enq.course_interested.course_name if enq.course_interested else "—"
+#             source = enq.get_heard_from_display()
+
+#             row_data = [
+#                 idx,
+#                 enq.student_name,
+#                 course,
+#                 source,
+#                 enq.enquiry_date.strftime("%d/%m/%Y")
+#             ]
+
+#             for col_num, value in enumerate(row_data, 1):
+#                 cell = ws.cell(row=current_row, column=col_num, value=value)
+#                 cell.border = border
+#                 cell.alignment = Alignment(vertical="center")
+#                 if col_num in [1, 5]:  # Center Sl No & Date
+#                     cell.alignment = Alignment(horizontal="center", vertical="center")
+
+#             current_row += 1
+
+#         # === 4. Clean Row Height ===
+#         for r in range(table_row, current_row):
+#             ws.row_dimensions[r].height = 24
+
+#         # === 5. RETURN EXCEL ===
+#         response = HttpResponse(
+#             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+#         )
+#         month_name = calendar.month_name[today.month]
+#         response["Content-Disposition"] = (
+#             f'attachment; filename="Enquiry_Source_Tracking_{month_name}_{today.year}.xlsx"'
+#         )
+#         wb.save(response)
+#         return response
+from django.http import HttpResponse
 from openpyxl import Workbook
 from openpyxl.drawing.image import Image as XLImage
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-from django.http import HttpResponse
-from rest_framework.views import APIView
-from .models import Enquiry
-
+from datetime import date
+import calendar
 
 class ExportEnquirySourceExcel(APIView):
+    permission_classes = [AllowAny]  # or your auth
+
     def post(self, request, *args, **kwargs):
         header_image = request.FILES.get("header_image")
 
-        # Current month data
         today = date.today()
-        enquiries = Enquiry.objects.filter(
+        enquiries = EnquiryArchive.objects.filter(
             enquiry_date__year=today.year,
             enquiry_date__month=today.month
-        ).select_related('course_interested').order_by('enquiry_date')
+        ).order_by('enquiry_date')
 
         wb = Workbook()
         ws = wb.active
         ws.title = "Source Tracking"
 
-        # === TABLE CONFIG (Easy to extend later) ===
         headers = ["Sl No", "Student Name", "Course Name", "Source", "Enquiry Date"]
-        column_widths = [10, 25, 32, 18, 18]   # One width per column
+        column_widths = [10, 30, 35, 20, 18]
 
-        total_columns = len(headers)
-
-        # Set column widths
         for i, width in enumerate(column_widths, 1):
             ws.column_dimensions[get_column_letter(i)].width = width
 
         start_row = 1
 
-        # === 1. HEADER IMAGE – FULL TABLE WIDTH ===
+        # Header Image
         if header_image:
             try:
                 img = XLImage(header_image)
-
-                # Auto-calculate image width based on total column width
-                total_excel_units = sum(column_widths)
-                img.width = int(total_excel_units * 7.5)   # 7.5 pixels per unit (perfect fit)
+                img.width = 680
                 img.height = 140
-
                 ws.row_dimensions[1].height = 105
                 ws.add_image(img, "A1")
-                start_row = 6  # Table starts right below image
+                start_row = 6
             except Exception as e:
                 return HttpResponse(f"Image error: {e}", status=400)
 
-        # === 2. TABLE HEADER (Dark Blue) ===
+        # Header Style
         table_row = start_row
-
-        header_fill = PatternFill("solid", fgColor="1F4E79")  # Exact dark blue
+        header_fill = PatternFill("solid", fgColor="1F4E79")
         header_font = Font(bold=True, color="FFFFFF")
-        border = Border(left=Side("thin"), right=Side("thin"),
-                        top=Side("thin"), bottom=Side("thin"))
+        border = Border(left=Side("thin"), right=Side("thin"), top=Side("thin"), bottom=Side("thin"))
 
         for col_num, header in enumerate(headers, 1):
             cell = ws.cell(row=table_row, column=col_num, value=header)
@@ -1054,11 +1161,21 @@ class ExportEnquirySourceExcel(APIView):
             cell.alignment = Alignment(horizontal="center", vertical="center")
             cell.border = border
 
-        # === 3. DATA ROWS ===
+        # DATA ROWS – FIXED SOURCE DISPLAY
         current_row = table_row + 1
+
+        # SAFE CHOICES DICTIONARY (Never crashes)
+        HEARD_FROM_CHOICES = {
+            'walk in': 'Walk-in',
+            'call': 'Call',
+            'referral': 'Referral',
+            'social media': 'Social Media',
+            'website': 'Website',
+        }
+
         for idx, enq in enumerate(enquiries, start=1):
-            course = enq.course_interested.course_name if enq.course_interested else "—"
-            source = enq.get_heard_from_display()
+            course = enq.course_interested or "Not Selected"
+            source = HEARD_FROM_CHOICES.get(enq.heard_from, enq.heard_from or "Unknown")
 
             row_data = [
                 idx,
@@ -1072,34 +1189,24 @@ class ExportEnquirySourceExcel(APIView):
                 cell = ws.cell(row=current_row, column=col_num, value=value)
                 cell.border = border
                 cell.alignment = Alignment(vertical="center")
-                if col_num in [1, 5]:  # Center Sl No & Date
+                if col_num in [1, 5]:
                     cell.alignment = Alignment(horizontal="center", vertical="center")
 
             current_row += 1
 
-        # === 4. Clean Row Height ===
+        # Row heights
         for r in range(table_row, current_row):
-            ws.row_dimensions[r].height = 24
+            ws.row_dimensions[r].height = 26
 
-        # === 5. RETURN EXCEL ===
+        # Return Excel
         response = HttpResponse(
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
         month_name = calendar.month_name[today.month]
-        response["Content-Disposition"] = (
-            f'attachment; filename="Enquiry_Source_Tracking_{month_name}_{today.year}.xlsx"'
-        )
+        filename = f"Enquiry_Source_Tracking_{month_name}_{today.year}.xlsx"
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
         wb.save(response)
         return response
-
-
-
-
-
-
-
-
-
 
 
 

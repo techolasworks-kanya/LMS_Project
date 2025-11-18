@@ -346,9 +346,7 @@ class AdmissionListSerializer(serializers.ModelSerializer):
     university         = serializers.SerializerMethodField()
     flexible_timings   = serializers.SerializerMethodField()
 
-    # ----- Fields that you tried to read from "followup" -----
-    # Admission model has NO followup field → these were always wrong
-    # We'll return null/empty safely
+ 
     enquiry_source      = serializers.SerializerMethodField()
     guardian_namae      = serializers.SerializerMethodField()
     guardian_occupation = serializers.SerializerMethodField()
