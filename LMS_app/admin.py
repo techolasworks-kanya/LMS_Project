@@ -46,7 +46,7 @@ class AdmissionAdmin(admin.ModelAdmin):
 
 
 admin.site.register(NotInterestedLead)
-
 admin.site.register(Notification)
+admin.site.register(Payment)
 
  

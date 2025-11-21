@@ -42,8 +42,12 @@ INSTALLED_APPS = [
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'LMS.auth_backend.CookieJWTAuthentication',  # ← CORRECT
+        'LMS.auth_backend.CookieJWTAuthentication', 
+    
     ],
+
+    # 'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    # 'PAGE_SIZE': 5,
         
     
     'DEFAULT_PERMISSION_CLASSES': (
@@ -111,13 +115,6 @@ import dj_database_url
 import os
 
 
-
-# DATABASES = {
-#     'default': dj_database_url.config(
-#         default=os.environ.get('DATABASE_URL'),
-#         conn_max_age=600,
-#     )
-# }
 
 
 from pathlib import Path

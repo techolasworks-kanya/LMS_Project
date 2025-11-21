@@ -38,8 +38,9 @@ urlpatterns = [
 
     path('api/admissions', views.AdmissionListCreateView.as_view(), name='admission-list-create'),
     path('api/admissions/<int:pk>', views.AdmissionDetailView.as_view(), name='admission-detail'),
+    path('api/admissions/update/<int:id>', views.AdmissionUpdateView.as_view(), name='admission-update'),
     path('api/admissions/delete-multiple', views.AdmissionDeleteView.as_view()),
-
+    path('api/admissions/create_admissions', views.AdmissionUpdateView.as_view(), name='admission-manual-create'),
 
 #not interested leads API endpoints
     path('api/not-interested', views.NotInterestedLeadListView.as_view(), name='not-interested-list'),
@@ -60,6 +61,9 @@ urlpatterns = [
      path("api/admissions/export-excel", ExportAdmissionExcel.as_view(),name="export-excel-dynamic"),
           
     path('export/enquiry-source-excel', views.ExportEnquirySourceExcel.as_view(), name='export-enquiry-source'),
+
+    path('api/payment_create/<int:admission_id>', views.PaymentCreateView.as_view()),
+    path('api/receipt/print/<int:pk>', views.ReceiptPrintView.as_view(), name='receipt-print'),
     
 
 ]

@@ -8,12 +8,10 @@ from rest_framework.decorators import api_view
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import authenticate, login
 from rest_framework.permissions import AllowAny
-# from django.utils.decorators import method_decorator
 from django.contrib.auth import logout
-# from django.db.models import Q
-
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView  
+from rest_framework.pagination import PageNumberPagination
 
 
 @api_view(['GET'])
@@ -200,18 +198,27 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
     def get_serializer_class(self):
         return EnquiryCreateSerializer if self.request.method == 'POST' else EnquiryListSerializer
 
+    # def get_queryset(self):
+    #     if self.request.method == 'GET':
+    #         return Enquiry.objects.exclude(
+    #             admissions__isnull=False  
+                
+    #         ).select_related('course_interested').order_by('-id')
+        
+    #     return super().get_queryset()
     def get_queryset(self):
         if self.request.method == 'GET':
             return Enquiry.objects.exclude(
-                admissions__isnull=False   # ← This line is magic
+                admissions__isnull=False
+            ).exclude(
+                is_archived=True                     
             ).select_related('course_interested').order_by('-id')
         
         return super().get_queryset()
-    
-    
+
 
     def perform_create(self, serializer):
-        return serializer.save()  # <-- Return the created object
+        return serializer.save()  
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -239,7 +246,6 @@ class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [AllowAny]
 
    
-
     def update(self, request, *args, **kwargs):
         response = super().update(request, *args, **kwargs)
         response.data = {
@@ -258,7 +264,6 @@ class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 # Follow-up List and Create
-
 class FollowUpListCreateView(generics.ListCreateAPIView):
     # queryset = FollowUps.objects.select_related('enquiry', 'enquiry__course_interested').prefetch_related('remarks')
     def get_queryset(self):
@@ -270,6 +275,7 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
 
     
     permission_classes = [AllowAny]
+    # pagination_class = PageNumberPagination
 
     def get_serializer_class(self):
         return FollowUpListSerializer if self.request.method == 'GET' else FollowUpDetailSerializer
@@ -401,8 +407,10 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
                 admission_date__year=year
             )
 
-        return queryset
+        return queryset.order_by('-id')
+    
     permission_classes = [AllowAny]
+    # pagination_class = PageNumberPagination
 
     def get_serializer_class(self):
         return AdmissionListSerializer if self.request.method == 'GET' else AdmissionCreateSerializer
@@ -505,26 +513,45 @@ class AdmissionDetailView(generics.RetrieveAPIView):
     serializer_class = AdmissionListSerializer
     permission_classes = [AllowAny]
 
+class AdmissionUpdateView(generics.UpdateAPIView):
+    queryset = Admission.objects.select_related('enquiry', 'enquiry__course_interested')
+    serializer_class = AdmissionUpdateSerializer
+    permission_classes = [AllowAny]
+    lookup_field = 'id'
 
-# class AdmissionDeleteView(APIView):
-#     permission_classes = [AllowAny]
 
-#     def delete(self, request, *args, **kwargs):
-#         # Expecting: { "ids": [1, 2, 5] }
-#         ids = request.data.get("ids")
+    def post(self, request, *args, **kwargs):
+        # If no ID in URL → Manual Create
+        if not kwargs.get('id'):
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            admission = serializer.save()
+            return Response({
+                "status": "Manual admission created successfully!",
+                "admission_id": admission.id,
+                "student_code": admission.student_code,
+                "message": "Go to payment now"
+            }, status=201)
 
-#         if not ids or not isinstance(ids, list):
-#             return Response(
-#                 {"error": "Provide admission IDs as { \"ids\": [1] } or { \"ids\": [1,2] }"},
-#                 status=400
-#             )
+        # Otherwise → Normal Update (existing)
+        return self.patch(request, *args, **kwargs)
 
-#         deleted_count, _ = Admission.objects.filter(id__in=ids).delete()
+    def patch(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.is_deleted:
+            return Response({"error": "Cancelled admission cannot be updated"}, status=400)
 
-#         return Response(
-#             {"message": f"{deleted_count} admission(s) deleted successfully"},
-#             status=200
-#         )
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated_admission = serializer.save()
+
+        # Return FULL data using your existing ListSerializer
+        full_data = AdmissionListSerializer(updated_admission).data
+        return Response({
+            "status": "Admission updated successfully",
+            "data": full_data
+        }, status=200)
+
 
 class AdmissionDeleteView(APIView):
     permission_classes = [AllowAny]
@@ -581,15 +608,18 @@ class NotInterestedLeadCreateView(generics.CreateAPIView):
                 last_followup_date=followup.followup_date,
                 status="not_interested"
             )
+            followup.enquiry.is_archived = True
+            followup.enquiry.save(update_fields=['is_archived'])        
 
+            followup.delete()
             created_records.append(record)
 
              # 1️⃣ UPDATE ENQUIRY STATUS
-            followup.enquiry.status = "not_interested"
-            followup.enquiry.save()
+            # followup.enquiry.status = "not_interested"
+            # followup.enquiry.save()
 
             # NOW delete only followup (NOT enquiry)
-            followup.delete()
+            
             
 
         return Response({
@@ -602,6 +632,7 @@ class NotInterestedLeadCreateView(generics.CreateAPIView):
 class NotInterestedLeadListView(generics.ListAPIView):
     serializer_class = NotInterestedLeadListSerializer
     permission_classes = [AllowAny]
+    # pagination_class = PageNumberPagination
 
     def get_queryset(self):
         queryset = NotInterestedLead.objects.select_related(
@@ -612,7 +643,8 @@ class NotInterestedLeadListView(generics.ListAPIView):
             queryset = queryset.filter(
                 enquiry__student_name__icontains=search
             )
-        return queryset
+        return queryset.order_by('-id')
+    
     
 
 # NOTIFICATIONS
@@ -685,57 +717,84 @@ class NotificationUpdateView(generics.UpdateAPIView):
 
 
 import calendar
+# class ConversionStatsView(APIView):
+#     def get(self, request):
+
+#         # Get current date
+#         today = date.today()
+#         month = today.month
+#         year = today.year
+
+#         # Fetch data for current month automatically
+#         enquiries = Enquiry.objects.filter(
+#             enquiry_date__month=month, enquiry_date__year=year
+#         )
+
+#         admissions = Admission.objects.filter(
+#             admission_date__month=month, admission_date__year=year
+#         )
+
+#         # Convert month number → month name
+#         month_name = calendar.month_name[month]
+
+#         data = {
+#             "month": month_name,
+#             "year": year,
+#             "total_enquiries": enquiries.count(),
+#             "total_admissions": admissions.count(),
+#         }
+
+#         serializer = ConversionStatsSerializer(data)
+#         return Response(serializer.data)
 class ConversionStatsView(APIView):
     def get(self, request):
-
-        # Get current date
         today = date.today()
         month = today.month
         year = today.year
 
-        # Fetch data for current month automatically
-        enquiries = Enquiry.objects.filter(
-            enquiry_date__month=month, enquiry_date__year=year
-        )
+        total_enquiries = Enquiry.objects.filter(
+            enquiry_date__month=month,
+            enquiry_date__year=year
+        ).count()
 
-        admissions = Admission.objects.filter(
-            admission_date__month=month, admission_date__year=year
-        )
+        total_admissions = Admission.objects.filter(
+            enquiry__enquiry_date__month=month,
+            enquiry__enquiry_date__year=year
+        ).count()
 
-        # Convert month number → month name
         month_name = calendar.month_name[month]
+
+        if total_enquiries > 0:
+            admission_rate = round((total_admissions / total_enquiries) * 100)
+        else:
+            admission_rate = 0
 
         data = {
             "month": month_name,
             "year": year,
-            "total_enquiries": enquiries.count(),
-            "total_admissions": admissions.count(),
+            "total_enquiry": total_enquiries,
+            "total_admission": total_admissions,
+            "admission_rate": f"{admission_rate}%"
         }
 
-        serializer = ConversionStatsSerializer(data)
+        # Correct way: use data= keyword
+        serializer = ConversionStatsSerializer(data=data)
+        serializer.is_valid(raise_exception=True)  # optional but good practice
         return Response(serializer.data)
 
-
-
-
-
 from collections import Counter
-
 class EnquirySourceStatsView(APIView):
     def get(self, request):
 
-        # Auto-detect current month and year
         today = date.today()
         month = today.month
         year = today.year
 
-        # Get all enquiries for the current month
         enquiries = Enquiry.objects.filter(
             enquiry_date__month=month,
             enquiry_date__year=year
         )
 
-        # Count by source (heard_from)
         source_counts = Counter(enq.heard_from for enq in enquiries)
 
         # Total enquiries of the month
@@ -744,7 +803,7 @@ class EnquirySourceStatsView(APIView):
         # Compute percentage + count
         source_stats = {}
         for source, count in source_counts.items():
-            percentage = round((count / total) * 100, 2) if total > 0 else 0
+            percentage = round((count / total) * 100) if total > 0 else 0
             source_stats[source] = {
                 "count": count,
                 "percentage": percentage
@@ -771,17 +830,14 @@ class EnquirySourceStatsView(APIView):
 
 
 
-
-
-
-
 import openpyxl
 from openpyxl.drawing.image import Image as XLImage
 from django.http import HttpResponse
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-
+from datetime import date
+import calendar
 class ExportAdmissionExcel(APIView):
     def post(self, request, *args, **kwargs):
 
@@ -880,19 +936,6 @@ class ExportAdmissionExcel(APIView):
         wb.save(response)
         return response
 
-
-# views.py
-from datetime import date
-import calendar
-from openpyxl import Workbook
-from openpyxl.drawing.image import Image as XLImage
-from openpyxl.styles import Font, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
-from django.http import HttpResponse
-from rest_framework.views import APIView
-from .models import Enquiry
-
-class ExportEnquirySourceExcel(APIView):
     def post(self, request, *args, **kwargs):
         header_image = request.FILES.get("header_image")
 
@@ -991,125 +1034,6 @@ class ExportEnquirySourceExcel(APIView):
         wb.save(response)
         return response
     
-
-# from datetime import date
-# import calendar
-# from openpyxl import Workbook
-# from openpyxl.drawing.image import Image as XLImage
-# from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-# from openpyxl.utils import get_column_letter
-# from django.http import HttpResponse
-# from rest_framework.views import APIView
-# from .models import Enquiry
-
-
-# class ExportEnquirySourceExcel(APIView):
-#     def post(self, request, *args, **kwargs):
-#         header_image = request.FILES.get("header_image")
-
-#         # Current month data
-#         today = date.today()
-#         # enquiries = EnquiryArchive.objects.filter(
-#         #     enquiry_date__year=today.year,
-#         #     enquiry_date__month=today.month
-#         # ).select_related('course_interested').order_by('enquiry_date')
-#         enquiries = EnquiryArchive.objects.filter(
-#         enquiry_date__year=today.year,
-#         enquiry_date__month=today.month
-#         ).order_by('enquiry_date')
-
-#         wb = Workbook()
-#         ws = wb.active
-#         ws.title = "Source Tracking"
-
-#         # === TABLE CONFIG (Easy to extend later) ===
-#         headers = ["Sl No", "Student Name", "Course Name", "Source", "Enquiry Date"]
-#         column_widths = [10, 25, 32, 18, 18]   # One width per column
-
-#         total_columns = len(headers)
-
-#         # Set column widths
-#         for i, width in enumerate(column_widths, 1):
-#             ws.column_dimensions[get_column_letter(i)].width = width
-
-#         start_row = 1
-
-#         # === 1. HEADER IMAGE – FULL TABLE WIDTH ===
-#         if header_image:
-#             try:
-#                 img = XLImage(header_image)
-
-#                 # Auto-calculate image width based on total column width
-#                 total_excel_units = sum(column_widths)
-#                 img.width = int(total_excel_units * 7.5)   # 7.5 pixels per unit (perfect fit)
-#                 img.height = 140
-
-#                 ws.row_dimensions[1].height = 105
-#                 ws.add_image(img, "A1")
-#                 start_row = 6  # Table starts right below image
-#             except Exception as e:
-#                 return HttpResponse(f"Image error: {e}", status=400)
-
-#         # === 2. TABLE HEADER (Dark Blue) ===
-#         table_row = start_row
-
-#         header_fill = PatternFill("solid", fgColor="1F4E79")  # Exact dark blue
-#         header_font = Font(bold=True, color="FFFFFF")
-#         border = Border(left=Side("thin"), right=Side("thin"),
-#                         top=Side("thin"), bottom=Side("thin"))
-
-#         for col_num, header in enumerate(headers, 1):
-#             cell = ws.cell(row=table_row, column=col_num, value=header)
-#             cell.fill = header_fill
-#             cell.font = header_font
-#             cell.alignment = Alignment(horizontal="center", vertical="center")
-#             cell.border = border
-
-#         # === 3. DATA ROWS ===
-#         current_row = table_row + 1
-#         for idx, enq in enumerate(enquiries, start=1):
-#             course = enq.course_interested.course_name if enq.course_interested else "—"
-#             source = enq.get_heard_from_display()
-
-#             row_data = [
-#                 idx,
-#                 enq.student_name,
-#                 course,
-#                 source,
-#                 enq.enquiry_date.strftime("%d/%m/%Y")
-#             ]
-
-#             for col_num, value in enumerate(row_data, 1):
-#                 cell = ws.cell(row=current_row, column=col_num, value=value)
-#                 cell.border = border
-#                 cell.alignment = Alignment(vertical="center")
-#                 if col_num in [1, 5]:  # Center Sl No & Date
-#                     cell.alignment = Alignment(horizontal="center", vertical="center")
-
-#             current_row += 1
-
-#         # === 4. Clean Row Height ===
-#         for r in range(table_row, current_row):
-#             ws.row_dimensions[r].height = 24
-
-#         # === 5. RETURN EXCEL ===
-#         response = HttpResponse(
-#             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-#         )
-#         month_name = calendar.month_name[today.month]
-#         response["Content-Disposition"] = (
-#             f'attachment; filename="Enquiry_Source_Tracking_{month_name}_{today.year}.xlsx"'
-#         )
-#         wb.save(response)
-#         return response
-from django.http import HttpResponse
-from openpyxl import Workbook
-from openpyxl.drawing.image import Image as XLImage
-from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
-from datetime import date
-import calendar
-
 class ExportEnquirySourceExcel(APIView):
     permission_classes = [AllowAny]  # or your auth
 
@@ -1208,9 +1132,136 @@ class ExportEnquirySourceExcel(APIView):
 
 
 
+class PaymentCreateView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, admission_id=None):
+        # Get admission from URL
+        admission = get_object_or_404(Admission, id=admission_id, is_deleted=False)
+
+        serializer = PaymentCreateSerializer(data=request.data)
+        if serializer.is_valid():
+            payment = serializer.save(admission=admission)
+
+            # Update total fee_paid in admission
+            admission.fee_paid += payment.amount
+            admission.save()
+
+            return Response({
+                "status": "Payment recorded successfully!",
+                "payment_id": payment.id,
+                "receipt_number": payment.receipt_number,
+                "student_name": payment.admission.enquiry.student_name if payment.admission.enquiry else "Student",
+                "course_name": payment.admission.course.course_name if payment.admission.course else "N/A",
+                "amount_paid": str(payment.amount + payment.admission_fee),
+                "print_url": f"/receipt/print/{payment.id}/",
+                "message": "Receipt ready to print"
+            }, status=201)
+
+        return Response(serializer.errors, status=400)
 
 
+from django.shortcuts import get_object_or_404
+class ReceiptPrintView(APIView):
+    def get(self, request, pk):
+        payment = get_object_or_404(Payment, id=pk)
+        student = payment.admission.enquiry
+        student_name = student.student_name if student else "Student"
+        course_name = payment.admission.course.course_name if payment.admission.course else "N/A"
 
+        html = f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <title>Receipt - {payment.receipt_number}</title>
+            <style>
+                body {{ font-family: 'Arial', sans-serif; margin: 40px; background: #f9f9f9; }}
+                .receipt {{ 
+                    max-width: 700px; margin: auto; border: 3px solid #003366; 
+                    padding: 30px; background: white; box-shadow: 0 0 20px rgba(0,0,0,0.1);
+                }}
+                .header {{ background: #003366; color: white; padding: 20px; text-align: center; margin: -30px -30px 30px -30px; }}
+                .header h1 {{ margin: 0; font-size: 28px; }}
+                table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
+                td {{ padding: 10px; border-bottom: 1px solid #ddd; }}
+                .label {{ font-weight: bold; width: 180px; }}
+                .amount-table {{ width: 100%; border: 2px solid #000; margin: 30px 0; }}
+                .amount-table th, .amount-table td {{ padding: 12px; text-align: left; border: 1px solid #000; }}
+                .amount-table th {{ background: #f0f0f0; }}
+                .total-row {{ background: #e6f3ff !important; font-weight: bold; font-size: 18px; }}
+                .footer {{ margin-top: 50px; text-align: center; color: #003366; }}
+                .print-btn {{ 
+                    background: #003366; color: white; padding: 15px 40px; 
+                    font-size: 18px; border: none; border-radius: 8px; cursor: pointer; margin: 20px 10px;
+                }}
+                @media print {{
+                    body {{ margin: 0; }}
+                    .no-print {{ display: none; }}
+                }}
+            </style>
+        </head>
+        <body onload="window.print()">
+            <div class="receipt">
+                <div class="header">
+                    <h1>TECHOLAS TECHNOLOGIES</h1>
+                    <p>techolas@gmail.com | 1234567890</p>
+                </div>
 
+                <table>
+                    <tr>
+                        <td class="label">Receipt No:</td>
+                        <td><strong>{payment.receipt_number}</strong></td>
+                        <td class="label">Date:</td>
+                        <td><strong>{payment.payment_date.strftime('%d/%m/%Y')}</strong></td>
+                    </tr>
+                    <tr>
+                        <td class="label">Bill To :</td>
+                        <td></td>
+                        <td class="label">Payment Mode :</td>
+                        <td><strong>{payment.get_payment_mode_display()}</strong></td>
+                    </tr>
+                    <tr>
+                        <td class="label">Student Name :</td>
+                        <td><strong>{student_name}</strong></td>
+                        <td class="label">Transaction ID :</td>
+                        <td><strong>{payment.transaction_id or 'N/A'}</strong></td>
+                    </tr>
+                    <tr>
+                        <td class="label">Student ID :</td>
+                        <td colspan="3"><strong>{payment.admission.student_code}</strong></td>
+                    </tr>
+                </table>
 
+                <table class="amount-table">
+                    <tr><th>Description</th><th>Amount</th></tr>
+                    <tr>
+                        <td>Course Name : {course_name}</td>
+                        <td>₹{payment.amount}</td>
+                    </tr>
+                    {"<tr><td>Admission Fee</td><td>₹{}</td></tr>".format(payment.admission_fee) if payment.admission_fee > 0 else ""}
+                    <tr class="total-row">
+                        <td>Total Amount Paid</td>
+                        <td>₹{payment.amount + payment.admission_fee}</td>
+                    </tr>
+                </table>
 
+                <p><strong>Remarks:</strong> {payment.remarks or 'None'}</p>
+
+                <div class="footer">
+                    <h3>Thank you for your payment</h3>
+                    <ul style="list-style: none; padding: 0;">
+                        <li>• This is computer generated and valid without signature</li>
+                        <li>• No refund applicable unless explicitly mentioned</li>
+                    </ul>
+                </div>
+
+                <div class="no-print" style="text-align: center; margin-top: 40px;">
+                    <button class="print-btn" onclick="window.print()">Print Receipt</button>
+                    <button class="print-btn" style="background: #666;" onclick="window.close()">Close</button>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        return HttpResponse(html)

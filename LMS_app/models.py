@@ -23,7 +23,6 @@ class CustomUser(AbstractUser):
         return ''.join(secrets.choice(chars) for _ in range(length))
     
 
-
 class certfication(models.Model):
     certfication_name = models.CharField(max_length=100)
 
@@ -76,7 +75,7 @@ class Enquiry(models.Model):
        
     ]
     flexible_timings = models.CharField(max_length=10, choices=FLEXIBLE_TIMINGS_CHOICES, blank=True, null=True)
-    
+    is_archived = models.BooleanField(default=False, db_index=True)
 
     def __str__(self):
         return self.student_name
@@ -105,7 +104,7 @@ class EnquiryArchive(models.Model):
     archived_at = models.DateTimeField(null=True, blank=True)
     
     # Track final status
-    final_status = models.CharField( max_length=20,
+    final_status = models.CharField( max_length=30,
         choices=[
             ('new', 'New Enquiry'),
             ('followup', 'In Follow-up'),
@@ -170,9 +169,7 @@ class FollowUpRemark(models.Model):
         return f"{self.content[:30]}... ({self.added_on.strftime('%d/%m/%Y, %I:%M %p')})"
 
 
-
-
-
+from django.core.validators import RegexValidator
 class Admission(models.Model):
     enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE,null=True,related_name='admissions')
     admission_date = models.DateField(auto_now_add=True)
@@ -181,15 +178,86 @@ class Admission(models.Model):
     status = models.CharField(max_length=20,choices=[('confirmed', 'Confirmed'),('pending', 'Pending'),('cancelled', 'Cancelled'),],default='pending')
     is_deleted = models.BooleanField(default=False)
 
+
+    student_code = models.CharField(max_length=30, unique=True, null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.student_code:
+            month = timezone.now().strftime('%b').upper()
+            sequence = Admission.objects.filter(
+                admission_date__year=timezone.now().year,
+                admission_date__month=timezone.now().month
+            ).count() + 1
+
+            self.student_code = f"TS-EKM-GST-{month}-{sequence:02d}"
+
+        super().save(*args, **kwargs)
+
+
+    student_photo = models.ImageField(upload_to='admissions/photos/',null=True,blank=True,help_text="Upload student passport size photo")
+
+  
+    aadhaar_number = models.CharField(max_length=12,null=True,blank=True,unique=True,validators=[RegexValidator(r'^\d{12}$', 'Aadhaar must be exactly 12 digits')],help_text="Enter 12-digit Aadhaar number")
+    educational_certificate = models.FileField(upload_to='admissions/certificates/',null=True,blank=True,help_text="Upload 10th/12th/Degree certificate (PDF/Image)")
+    SCHEDULE_CHOICES = [
+        ('online', 'Online'),
+        ('offline', 'Offline'),
+    ]
+    class_schedule = models.CharField(max_length=10,choices=SCHEDULE_CHOICES,null=True,blank=True,help_text="Select Online or Offline")
+    ONLINE_TIMING_CHOICES = [
+        ('morning', 'Morning (10:00 AM - 1:00 PM)'),
+        ('evening', 'Evening (6:00 PM - 9:00 PM)'),
+    ]
+    OFFLINE_TIMING_CHOICES = [
+        ('9:00 to 11:00', '9:00 AM - 11:00 AM'),
+        ('11:00to 1:00', '11:00 AM - 1:00 PM'),
+        ('2:00 to 4:00', '2:00 PM - 4:00 PM'),
+    ]
+    class_timing = models.CharField(max_length=20,null=True,blank=True,help_text="Select timing based on schedule type")
+    PAYMENT_STRUCTURE_CHOICES = [
+        ('full', 'Full Payment'),
+        ('installments', 'Installments'),
+        ('emi', 'EMI'),
+    ]
+
+
+    payment_structure = models.CharField(max_length=20,choices=PAYMENT_STRUCTURE_CHOICES,null=True,blank=True,help_text="How student will pay fees")
+    NACTIT_CHOICES = [
+        ('yes', 'Yes'),
+        ('no', 'No'),
+    ]
+    interested_in_nactit = models.CharField( max_length=5,choices=NACTIT_CHOICES,default='no',help_text="Is student interested in NACTIT exam?")
+
+    nactit_fee = models.DecimalField(max_digits=8,decimal_places=2,default=0.00,editable=False,help_text="₹1000 added if interested in NACTIT"
+    )
     class Meta:
         verbose_name_plural = "Admissions"
         ordering = ['-admission_date']
+
 
     def __str__(self):
         if self.enquiry and self.enquiry.student_name:
             return f"Admission: {self.enquiry.student_name} - {self.course or 'No Course'}"
         return f"Admission ID: {self.id} (Student Deleted)"
     
+    def save(self, *args, **kwargs):
+        if not self.student_code:
+            now = timezone.now()
+            month = now.strftime('%b').upper() 
+            sequence = Admission.objects.filter(
+                admission_date__year=now.year,
+                admission_date__month=now.month
+            ).count() + 1
+            self.student_code = f"TS-EKM-GST-{month}-{sequence:02d}"
+        if self.interested_in_nactit == 'yes':
+            self.interested_in_nactit = 'no'  # default fallback
+
+        if self.interested_in_nactit == 'yes':
+            self.nactit_fee = 1000.00
+        else:
+            self.nactit_fee = 0.00
+
+        super().save(*args, **kwargs)
 
 class NotInterestedLead(models.Model):
     followup = models.ForeignKey(FollowUps, on_delete=models.SET_NULL,null=True, blank=True,related_name='not_interested_lead')
@@ -213,8 +281,6 @@ choices=[
         return f"{self.enquiry.student_name} - {self.get_status_display()}"
 
 
-
-
 class Notification(models.Model):
     MODULE_CHOICES = [
         ('enquiry', 'Enquiry'),
@@ -233,3 +299,32 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"{self.content[:50]}... ({'Read' if self.is_read else 'Unread'})"
+
+
+class Payment(models.Model):
+    PAYMENT_MODE_CHOICES = [
+        ('cash', 'Cash'),
+        ('upi', 'UPI'),
+        ('card', 'Card'),
+        ('bank_transfer', 'Bank Transfer'),
+    ]
+
+    admission = models.ForeignKey(Admission, on_delete=models.CASCADE, related_name='payments')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    admission_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    payment_mode = models.CharField(max_length=20, choices=PAYMENT_MODE_CHOICES)
+    transaction_id = models.CharField(max_length=100, blank=True, null=True)
+    remarks = models.TextField(blank=True, null=True)
+    payment_date = models.DateTimeField(auto_now_add=True)
+    receipt_number = models.CharField(max_length=20, unique=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.receipt_number:
+            # REC-20251119001
+            date_str = timezone.now().strftime('%Y%m%d')
+            count = Payment.objects.filter(payment_date__date=timezone.now().date()).count() + 1
+            self.receipt_number = f"REC-{date_str}{count:03d}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.receipt_number
