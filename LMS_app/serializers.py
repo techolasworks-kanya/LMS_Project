@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from .models import *
-
-
+from django.utils import timezone
+from datetime import timedelta  
+from datetime import datetime
 class LocalDateTimeField(serializers.DateTimeField):
     def to_representation(self, value):
         if not value:
@@ -28,11 +29,7 @@ class CourseListSerializer(serializers.ModelSerializer):
         model = course
         fields = ['course_name', 'duration', 'course_fee']
         
-
-from rest_framework import serializers
-from .models import Enquiry, course
-from datetime import datetime
-
+# from datetime import datetime
 
 class EnquiryCreateSerializer(serializers.ModelSerializer):
     course_name = serializers.CharField(
@@ -248,11 +245,6 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
 
     
 
-# serializers.py
-
- 
-from datetime import datetime, date
-
 class FollowUpDetailSerializer(serializers.ModelSerializer):
     # WRITE-ONLY INPUT FIELDS
     remarks = serializers.ListField(
@@ -331,7 +323,6 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
-
 #Admission Serializer
 
 class AdmissionListSerializer(serializers.ModelSerializer):
@@ -339,6 +330,7 @@ class AdmissionListSerializer(serializers.ModelSerializer):
     student_name       = serializers.SerializerMethodField()
     date_of_birth      = serializers.SerializerMethodField()
     course_name        = serializers.SerializerMethodField()
+    course_fee         = serializers.SerializerMethodField()
     qualification      = serializers.SerializerMethodField()
     phone1             = serializers.SerializerMethodField()
     phone2             = serializers.SerializerMethodField()
@@ -350,13 +342,10 @@ class AdmissionListSerializer(serializers.ModelSerializer):
     enquiry_date       = serializers.SerializerMethodField()
     university         = serializers.SerializerMethodField()
     flexible_timings   = serializers.SerializerMethodField()
-
     enquiry_source      = serializers.SerializerMethodField()
     guardian_name      = serializers.SerializerMethodField()
     guardian_occupation = serializers.SerializerMethodField()
-
-
-    # ADD THESE NEW FIELDS HERE
+    status  = serializers.SerializerMethodField()
     student_photo = serializers.ImageField(read_only=True)
     aadhaar_number = serializers.CharField(read_only=True)
     educational_certificate = serializers.FileField(read_only=True)
@@ -369,12 +358,12 @@ class AdmissionListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Admission
         fields = [
-            'id', 'admission_date', 'status', 'fee_paid',
-            'student_name', 'date_of_birth', 'course_name', 'qualification',
+            'id', 'admission_date', 'status',
+            'student_name', 'date_of_birth', 'course_name','course_fee', 'qualification',
             'phone1', 'phone2', 'email', 'address', 'gender',
             'percentage', 'year_of_passing', 'enquiry_date',
             'enquiry_source', 'guardian_name', 'guardian_occupation',
-            'university', 'flexible_timings',
+            'university', 'flexible_timings',''
 #------------------- New Fields -------------------
             'student_photo', 'aadhaar_number', 'educational_certificate',
             'class_schedule', 'class_timing', 'payment_structure','nactit_interest','nactit_fee'
@@ -391,6 +380,11 @@ class AdmissionListSerializer(serializers.ModelSerializer):
         if obj.enquiry and obj.enquiry.course_interested:
             return obj.enquiry.course_interested.course_name
         return None
+    
+    def get_course_fee(self, obj):
+        if obj.course and obj.course.course_fee is not None:
+            return obj.course.course_fee
+        return 0.00
 
     def get_qualification(self, obj):
         return obj.enquiry.educational_qualification if obj.enquiry else None
@@ -426,6 +420,9 @@ class AdmissionListSerializer(serializers.ModelSerializer):
 
     def get_flexible_timings(self, obj):
         return obj.enquiry.flexible_timings if obj.enquiry else None
+    
+    def get_status(self, obj):
+        return obj.get_status_display()
 
  
     def get_enquiry_source(self, obj):
@@ -475,6 +472,7 @@ class AdmissionCreateSerializer(serializers.ModelSerializer):
         fields = ['enquiry_ids','followup_ids']
    
 from django.shortcuts import get_object_or_404
+
 class AdmissionUpdateSerializer(serializers.ModelSerializer):
     enquiry_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     student_name = serializers.CharField(max_length=100)
@@ -489,30 +487,50 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
     university_college = serializers.CharField(max_length=200, required=False, allow_blank=True)
     percentage = serializers.FloatField(required=False, allow_null=True)
     year_of_passing = serializers.IntegerField(required=False, allow_null=True)
-    course_interested = serializers.PrimaryKeyRelatedField(
-        queryset=course.objects.all(), required=True
-    )
+
+    # THIS IS THE KEY: Accept raw input, convert manually
+    course_interested = serializers.CharField(max_length=100,write_only=True,required=True,help_text="Accept course ID (number) or course name (string)")
 
     class Meta:
         model = Admission
         fields = [
-            # Core
-            'id', 'enquiry_id',
-            'student_name', 'date_of_birth', 'guardian_name',
+            'id', 'enquiry_id', 'student_name', 'date_of_birth', 'guardian_name',
             'phone1', 'phone2', 'email', 'address', 'gender',
-            'educational_qualification', 'university_college',
-            'percentage', 'year_of_passing', 'course_interested',
-            'student_photo', 'aadhaar_number', 'educational_certificate',
+            'educational_qualification', 'university_college', 'percentage', 'year_of_passing',
+            'course_interested', 'student_photo', 'aadhaar_number', 'educational_certificate',
             'class_schedule', 'class_timing', 'payment_structure',
-            'interested_in_nactit', 'status', 'fee_paid'
+            'interested_in_nactit', 'status'
         ]
 
-    def create(self, validated_data):
-        enquiry_id = validated_data.pop('enquiry_id', None)
-        course_interested = validated_data.pop('course_interested')
+    def to_internal_value(self, data):
+        # Let DRF parse everything normally first
+        data = super().to_internal_value(data)
 
-        # Create Enquiry if manual
-        if not enquiry_id:
+        # Now handle course_interested manually
+        raw_course = data.pop('course_interested', None)
+
+        if raw_course is None:
+            raise serializers.ValidationError({"course_interested": "This field is required."})
+
+        # Convert to string for consistent handling
+        raw_course = str(raw_course).strip()
+
+        if raw_course.isdigit():
+            course_id = int(raw_course)
+            course_obj = get_object_or_404(course, id=course_id)
+        else:
+            course_obj = get_object_or_404(course, course_name__iexact=raw_course)
+
+        # Store the actual course object in validated_data
+        data['course_interested'] = course_obj
+
+        return data
+
+    def create(self, validated_data):
+        course_obj = validated_data.pop('course_interested')
+
+        # Manual enquiry creation
+        if not validated_data.get('enquiry_id'):
             enquiry = Enquiry.objects.create(
                 student_name=validated_data.pop('student_name'),
                 date_of_birth=validated_data.pop('date_of_birth', None),
@@ -526,51 +544,50 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
                 university_college=validated_data.pop('university_college', ''),
                 percentage=validated_data.pop('percentage', None),
                 year_of_passing=validated_data.pop('year_of_passing', None),
-                course_interested=course_interested,
+                course_interested=course_obj,
             )
         else:
-            enquiry = get_object_or_404(Enquiry, id=enquiry_id)
+            enquiry = get_object_or_404(Enquiry, id=validated_data.pop('enquiry_id'))
 
-        # Create Admission
         admission = Admission.objects.create(
             enquiry=enquiry,
-            course=course_interested,
+            course=course_obj,
             status=validated_data.get('status', 'pending'),
             **validated_data
         )
 
-        # Auto NACTIT fee
-        if admission.interested_in_nactit == 'yes':
-            admission.nactit_fee = 1000.00
-            admission.save()
+        admission.nactit_fee = 1000.00 if admission.interested_in_nactit == 'yes' else 0.00
+        admission.save()
 
         return admission
 
     def update(self, instance, validated_data):
-        # Same logic as before — update enquiry + admission
+        course_obj = validated_data.pop('course_interested', None)
+
+        # Update Enquiry
         enquiry = instance.enquiry
         if enquiry:
-            for attr, value in validated_data.items():
-                if attr in ['student_name', 'phone1', 'email', 'course_interested', 'guardian_name', 'date_of_birth', 'address', 'gender', 'educational_qualification', 'university_college', 'percentage', 'year_of_passing']:
-                    setattr(enquiry, attr, value)
+            for field in ['student_name', 'date_of_birth', 'guardian_name', 'phone1', 'phone2',
+                          'email', 'address', 'gender', 'educational_qualification',
+                          'university_college', 'percentage', 'year_of_passing']:
+                if field in validated_data:
+                    setattr(enquiry, field, validated_data.pop(field))
+            if course_obj:
+                enquiry.course_interested = course_obj
             enquiry.save()
 
-        # Update admission fields
+        # Update Admission
         for attr, value in validated_data.items():
             if hasattr(instance, attr):
                 setattr(instance, attr, value)
-        if 'course_interested' in validated_data:
-            instance.course = validated_data['course_interested']
 
-        # NACTIT fee logic
-        if instance.interested_in_nactit == 'yes':
-            instance.nactit_fee = 1000.00
-        else:
-            instance.nactit_fee = 0.00
+        if course_obj:
+            instance.course = course_obj
 
+        instance.nactit_fee = 1000.00 if instance.interested_in_nactit == 'yes' else 0.00
         instance.save()
-        return instance
 
+        return instance
 
 
 # serializers.py
@@ -606,23 +623,26 @@ class NotInterestedLeadListSerializer(serializers.ModelSerializer):
 
 
 
-#notfication APIs
+
 class NotificationSerializer(serializers.ModelSerializer):
-    created_at = serializers.DateTimeField(format='%d-%m-%Y %I:%M %p', read_only=True)
+    created_at = serializers.SerializerMethodField()  
     module_display = serializers.CharField(source='get_module_display', read_only=True)
 
     class Meta:
         model = Notification
-        fields = [
-            'id', 'module', 'module_display', 'content',
-            'created_at', 'is_read'
-        ]
+        fields = ['id', 'module', 'module_display', 'content', 'created_at', 'is_read']
         read_only_fields = ['created_at', 'is_read', 'module_display']
+
+    def get_created_at(self, obj):
+        # Force +5:30 (India Standard Time) – works even if your PC is in UTC
+        ist_time = obj.created_at + timedelta(hours=5, minutes=30)
+        return ist_time.strftime('%d-%m-%Y %I:%M %p')
+    
 
 class NotificationCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
-        fields = ['module', 'content']  # Only accept these
+        fields = ['module', 'content']  
 
     def create(self, validated_data):
        
@@ -639,18 +659,17 @@ class NotificationUpdateSerializer(serializers.ModelSerializer):
     
 
 
-
-
 class ConversionStatsSerializer(serializers.Serializer):
     month = serializers.CharField()
     year = serializers.IntegerField()
     total_enquiry = serializers.IntegerField()
     total_admission = serializers.IntegerField()
     admission_rate = serializers.CharField()
+    rate_change = serializers.CharField()   # ← New
+    status = serializers.CharField()
 
 
 
-# enquiry source chart serializers
 class EnquirySourceStatsSerializer(serializers.Serializer):
     month = serializers.CharField()
     year = serializers.IntegerField()

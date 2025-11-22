@@ -64,7 +64,9 @@ class Enquiry(models.Model):
         ('call', 'Call'),
         ('referral', 'Referral'),
         ('social media', 'Social Media'),
-        ('website', 'Website')
+        ('website', 'Website'),
+        ('news paper', 'news paper'),
+        ('other', 'other'),
     ]
     heard_from = models.CharField(max_length=20, choices=HEARD_FROM_CHOICES, default='walk in')
     course_interested = models.ForeignKey(course, on_delete=models.CASCADE,null=True, blank=True)
@@ -170,33 +172,48 @@ class FollowUpRemark(models.Model):
 
 
 from django.core.validators import RegexValidator
+
 class Admission(models.Model):
     enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE,null=True,related_name='admissions')
     admission_date = models.DateField(auto_now_add=True)
     course = models.ForeignKey('course', on_delete=models.SET_NULL,null=True, blank=True)
     fee_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    status = models.CharField(max_length=20,choices=[('confirmed', 'Confirmed'),('pending', 'Pending'),('cancelled', 'Cancelled'),],default='pending')
+    status = models.CharField(max_length=20,choices=[('under review', 'Under Review'),('confirmed', 'Confirmed'),('pending', 'Pending'),('under screening', 'Under Screening'),],default='pending')
     is_deleted = models.BooleanField(default=False)
-
-
     student_code = models.CharField(max_length=30, unique=True, null=True, blank=True)
+    COURSE_CODE_MAPPING = {
+   'Data Science': 'DS',
+   'Data Analytics': 'DA',
+   'Software Testing': 'ST',
+   'Python Full Stack':'PFS',
+   'Mearn Stack':'MS',
+   'Business Analytics': 'BA'
+    # Add more as needed
+    }
+    @staticmethod
+    def get_course_code(course_name):
+        """Return short code from course name (case-insensitive & flexible)"""
+        if not course_name:
+            return "NA"
 
-    def save(self, *args, **kwargs):
-        if not self.student_code:
-            month = timezone.now().strftime('%b').upper()
-            sequence = Admission.objects.filter(
-                admission_date__year=timezone.now().year,
-                admission_date__month=timezone.now().month
-            ).count() + 1
+        # Normalize
+        normalized = course_name.lower().replace(" ", "").replace("-", "")
 
-            self.student_code = f"TS-EKM-GST-{month}-{sequence:02d}"
+        # Exact or partial match in mapping
+        for key, code in Admission.COURSE_CODE_MAPPING.items():
+            key_clean = key.lower().replace(" ", "").replace("-", "")
+            if key_clean in normalized or normalized in key_clean:
+                return code
 
-        super().save(*args, **kwargs)
-
+        # Fallback: generate from name
+        words = [w for w in course_name.split() if w]
+        if len(words) == 1:
+            return course_name[:3].upper()
+        else:
+            return ''.join(word[0].upper() for word in words[:4])[:4]
+    
 
     student_photo = models.ImageField(upload_to='admissions/photos/',null=True,blank=True,help_text="Upload student passport size photo")
-
-  
     aadhaar_number = models.CharField(max_length=12,null=True,blank=True,unique=True,validators=[RegexValidator(r'^\d{12}$', 'Aadhaar must be exactly 12 digits')],help_text="Enter 12-digit Aadhaar number")
     educational_certificate = models.FileField(upload_to='admissions/certificates/',null=True,blank=True,help_text="Upload 10th/12th/Degree certificate (PDF/Image)")
     SCHEDULE_CHOICES = [
@@ -227,7 +244,6 @@ class Admission(models.Model):
         ('no', 'No'),
     ]
     interested_in_nactit = models.CharField( max_length=5,choices=NACTIT_CHOICES,default='no',help_text="Is student interested in NACTIT exam?")
-
     nactit_fee = models.DecimalField(max_digits=8,decimal_places=2,default=0.00,editable=False,help_text="₹1000 added if interested in NACTIT"
     )
     class Meta:
@@ -239,23 +255,66 @@ class Admission(models.Model):
         if self.enquiry and self.enquiry.student_name:
             return f"Admission: {self.enquiry.student_name} - {self.course or 'No Course'}"
         return f"Admission ID: {self.id} (Student Deleted)"
-    
+  
+    # def save(self, *args, **kwargs):
+    #     if not self.student_code:
+    #         now = timezone.now()
+    #         month = now.strftime('%b').upper()
+
+    #         # === DETERMINE COURSE NAME ===
+    #         if self.course:
+    #             course_name = self.course.course_name
+    #         elif self.enquiry and self.enquiry.course_interested:
+    #             course_name = self.enquiry.course_interested.course_name
+    #         else:
+    #             course_name = None
+
+    #         # === GET SHORT CODE ===
+    #         course_code = self.get_course_code(course_name) 
+
+    #         sequence = Admission.objects.filter(
+    #             admission_date__year=now.year,
+    #             admission_date__month=now.month
+    #         ).count() + 1
+
+    #         self.student_code = f"TS-EKM-GST-{course_code}-{month}-{sequence:02d}"
+
+    #     if getattr(self, 'interested_in_nactit', None) == 'yes':
+    #         self.nactit_fee = 1000.00
+    #     else:
+    #         self.nactit_fee = 0.00
+
+    #     super().save(*args, **kwargs)
     def save(self, *args, **kwargs):
+        is_new = self.pk is None  # First time saving?
+
+        if is_new and not kwargs.pop('force_under_review', False):
+            # Only auto-set "pending" if coming from enquiry/followup conversion
+            # Manual creation will pass force_under_review=True → becomes "under review"
+            self.status = 'pending'
+
         if not self.student_code:
             now = timezone.now()
-            month = now.strftime('%b').upper() 
+            month = now.strftime('%b').upper()
+
+            if self.course:
+                course_name = self.course.course_name
+            elif self.enquiry and self.enquiry.course_interested:
+                course_name = self.enquiry.course_interested.course_name
+            else:
+                course_name = None
+
+            course_code = Admission.get_course_code(course_name)
+
             sequence = Admission.objects.filter(
                 admission_date__year=now.year,
                 admission_date__month=now.month
-            ).count() + 1
-            self.student_code = f"TS-EKM-GST-{month}-{sequence:02d}"
-        if self.interested_in_nactit == 'yes':
-            self.interested_in_nactit = 'no'  # default fallback
+            ).count() + (1 if is_new else 0)
 
-        if self.interested_in_nactit == 'yes':
-            self.nactit_fee = 1000.00
-        else:
-            self.nactit_fee = 0.00
+            self.student_code = f"TS-EKM-GST-{course_code}-{month}-{sequence:02d}"
+
+        # NACTIT fee
+        self.nactit_fee = 1000.00 if getattr(self, 'interested_in_nactit', 'no') == 'yes' else 0.00
 
         super().save(*args, **kwargs)
 

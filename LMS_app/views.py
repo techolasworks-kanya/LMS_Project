@@ -198,27 +198,37 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
     def get_serializer_class(self):
         return EnquiryCreateSerializer if self.request.method == 'POST' else EnquiryListSerializer
 
-    # def get_queryset(self):
-    #     if self.request.method == 'GET':
-    #         return Enquiry.objects.exclude(
-    #             admissions__isnull=False  
-                
-    #         ).select_related('course_interested').order_by('-id')
-        
-    #     return super().get_queryset()
     def get_queryset(self):
         if self.request.method == 'GET':
+            has_followup = Exists(
+                FollowUps.objects.filter(enquiry_id=OuterRef('pk'))
+            )
             return Enquiry.objects.exclude(
                 admissions__isnull=False
+            
             ).exclude(
                 is_archived=True                     
+            ).exclude(
+                has_followup             
             ).select_related('course_interested').order_by('-id')
         
         return super().get_queryset()
 
 
     def perform_create(self, serializer):
-        return serializer.save()  
+        enquiry = serializer.save()  
+        course_name = (
+            enquiry.course_interested.course_name 
+            if enquiry.course_interested else "Unknown Course"
+        )
+        notification_content = f"New enquiry received for {course_name} from {enquiry.student_name}"
+
+        Notification.objects.create(
+            module='enquiry',
+            content=notification_content,
+            is_read=False
+        )
+        return enquiry
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -525,11 +535,12 @@ class AdmissionUpdateView(generics.UpdateAPIView):
         if not kwargs.get('id'):
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
-            admission = serializer.save()
+            admission = serializer.save(force_under_review=True)
+            admission.save()
             return Response({
                 "status": "Manual admission created successfully!",
                 "admission_id": admission.id,
-                "student_code": admission.student_code,
+                # "student_code": admission.student_code,
                 "message": "Go to payment now"
             }, status=201)
 
@@ -544,6 +555,14 @@ class AdmissionUpdateView(generics.UpdateAPIView):
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         updated_admission = serializer.save()
+
+
+        # Any update → change status to "under review"
+        updated_admission = serializer.save()
+        if updated_admission.status not in ['confirmed', 'cancelled']:
+            updated_admission.status = 'under review'
+            updated_admission.save()
+
 
         # Return FULL data using your existing ListSerializer
         full_data = AdmissionListSerializer(updated_admission).data
@@ -678,9 +697,6 @@ class NotificationAllListView(generics.ListAPIView):
             queryset = queryset.filter(module=module)
         return queryset
 
-
-
-
 # OPEN → AUTO MARK READ
 class NotificationDetailView(generics.RetrieveAPIView):
     queryset = Notification.objects.all()
@@ -717,71 +733,70 @@ class NotificationUpdateView(generics.UpdateAPIView):
 
 
 import calendar
-# class ConversionStatsView(APIView):
-#     def get(self, request):
-
-#         # Get current date
-#         today = date.today()
-#         month = today.month
-#         year = today.year
-
-#         # Fetch data for current month automatically
-#         enquiries = Enquiry.objects.filter(
-#             enquiry_date__month=month, enquiry_date__year=year
-#         )
-
-#         admissions = Admission.objects.filter(
-#             admission_date__month=month, admission_date__year=year
-#         )
-
-#         # Convert month number → month name
-#         month_name = calendar.month_name[month]
-
-#         data = {
-#             "month": month_name,
-#             "year": year,
-#             "total_enquiries": enquiries.count(),
-#             "total_admissions": admissions.count(),
-#         }
-
-#         serializer = ConversionStatsSerializer(data)
-#         return Response(serializer.data)
+from datetime import timedelta, date
 class ConversionStatsView(APIView):
     def get(self, request):
         today = date.today()
-        month = today.month
-        year = today.year
+        current_month = today.month
+        current_year = today.year
 
-        total_enquiries = Enquiry.objects.filter(
-            enquiry_date__month=month,
-            enquiry_date__year=year
+        # Previous month
+        # Compute previous month by going to the first day of current month and subtracting one day
+        prev_date = (today.replace(day=1) - timedelta(days=1))
+        prev_month = prev_date.month
+        prev_year = prev_date.year
+
+        # === CURRENT MONTH ===
+        current_enquiries = Enquiry.objects.filter(
+            enquiry_date__month=current_month,
+            enquiry_date__year=current_year
         ).count()
 
-        total_admissions = Admission.objects.filter(
-            enquiry__enquiry_date__month=month,
-            enquiry__enquiry_date__year=year
+        current_admissions = Admission.objects.filter(
+            enquiry__enquiry_date__month=current_month,
+            enquiry__enquiry_date__year=current_year
         ).count()
 
-        month_name = calendar.month_name[month]
+        current_rate = round((current_admissions / current_enquiries) * 100) if current_enquiries > 0 else 0
 
-        if total_enquiries > 0:
-            admission_rate = round((total_admissions / total_enquiries) * 100)
+        # === PREVIOUS MONTH ===
+        prev_enquiries = Enquiry.objects.filter(
+            enquiry_date__month=prev_month,
+            enquiry_date__year=prev_year
+        ).count()
+
+        prev_admissions = Admission.objects.filter(
+            enquiry__enquiry_date__month=prev_month,
+            enquiry__enquiry_date__year=prev_year
+        ).count()
+
+        prev_rate = round((prev_admissions / prev_enquiries) * 100) if prev_enquiries > 0 else 0
+
+        # === COMPARISON (This is what you wanted) ===
+        change = current_rate - prev_rate
+
+        if change > 0:
+            rate_change = f"{change}%"
+            status = "increased"
+        elif change < 0:
+            rate_change = f"{change}%"
+            status = "decreased"
         else:
-            admission_rate = 0
+            rate_change = "0%"
+            status = "no change"
 
         data = {
-            "month": month_name,
-            "year": year,
-            "total_enquiry": total_enquiries,
-            "total_admission": total_admissions,
-            "admission_rate": f"{admission_rate}%"
+            "month": calendar.month_name[current_month],
+            "year": current_year,
+            "total_enquiry": current_enquiries,
+            "total_admission": current_admissions,
+            "admission_rate": f"{current_rate}%",
+            "rate_change": rate_change,      
+            "status": status
         }
 
-        # Correct way: use data= keyword
-        serializer = ConversionStatsSerializer(data=data)
-        serializer.is_valid(raise_exception=True)  # optional but good practice
+        serializer = ConversionStatsSerializer(data)
         return Response(serializer.data)
-
 from collections import Counter
 class EnquirySourceStatsView(APIView):
     def get(self, request):
@@ -1265,3 +1280,69 @@ class ReceiptPrintView(APIView):
         </html>
         """
         return HttpResponse(html)
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

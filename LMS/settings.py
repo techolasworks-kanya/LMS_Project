@@ -56,9 +56,8 @@ REST_FRAMEWORK = {
 }
 
 
+TIME_ZONE = 'Asia/Kolkata'   # This is India time
 USE_TZ = True
-TIME_ZONE = 'Asia/Kolkata'
- 
 # ———— SimpleJWT Config ————
 from datetime import timedelta
 SIMPLE_JWT = {
