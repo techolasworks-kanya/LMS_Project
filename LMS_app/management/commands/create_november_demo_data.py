@@ -7,7 +7,7 @@ class Command(BaseCommand):
     help = 'Creates demo data for November 2025 only (20 enquiries, 12 admissions)'
 
     def handle(self, *args, **options):
-        from LMS_app.models import Course, Enquiry, Admission 
+        from LMS_app.models import course, Enquiry, Admission 
 
         self.stdout.write("Checking if November demo data already exists...")
 
@@ -17,7 +17,7 @@ class Command(BaseCommand):
             )
             return
 
-        course, created = Course.objects.get_or_create(
+        course, created = course.objects.get_or_create(
             course_name="Data Science",
             defaults={
                 'course_fee': 45000.00,
