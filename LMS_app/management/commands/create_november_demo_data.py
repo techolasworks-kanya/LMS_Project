@@ -46,7 +46,7 @@ class Command(BaseCommand):
                 student_name=f"Nov Student {i}",
                 phone1="99999" + str(10000 + i).zfill(5),
                 educational_qualification="B.Tech",
-                enquiry_date=enquiry_date.date(),
+                enquiry_date=enquiry_date,
                 course_interested=course,
                 heard_from='walk in'
             )
@@ -56,7 +56,7 @@ class Command(BaseCommand):
                 Admission.objects.create(
                     enquiry=enquiry,
                     course=course,
-                    admission_date=admission_date.date(),
+                    admission_date=admission_date,
                     status='confirmed',
                     total_fee=45000,
                     fee_paid=10000  # optional
