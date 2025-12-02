@@ -87,14 +87,14 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from LMS_app.models import course as CourseModel, Enquiry, Admission
 
-        # Prevent duplicate run
+        # Stop if already created
         if Enquiry.objects.filter(student_name__icontains="Nov Student").exists():
-            self.stdout.write(self.style.WARNING("Demo data already exists! Skipping..."))
+            self.stdout.write(self.style.WARNING("November demo data already exists! Skipping..."))
             return
 
-        self.stdout.write("Creating November 2025 demo data...")
+        self.stdout.write("Creating 20 enquiries + 12 admissions for November 2025...")
 
-        # Get or create course
+        # Get or create the course
         course_obj, _ = CourseModel.objects.get_or_create(
             course_name="Data Science",
             defaults={
@@ -111,26 +111,27 @@ class Command(BaseCommand):
             offset_days = (20 - i) * 1.5
             enquiry_date = base_date - timedelta(days=offset_days)
 
-            Enquiry.objects.create(
+            # Create Enquiry
+            enquiry = Enquiry.objects.create(
                 student_name=f"Nov Student {i}",
-                phone1=f"999991{i:04d}",           # 9999910001 to 9999910020
+                phone1=f"999991{i:04d}",
                 educational_qualification="B.Tech",
                 enquiry_date=enquiry_date,
                 course_interested=course_obj,
                 heard_from='walk in',
                 gender='male',
                 occupation="Student",
-                guardian_name=f"Parent of Nov {i}",
-                email=f"novstudent{i}@demo.com",
+                guardian_name=f"Parent of Student {i}",
+                email=f"nov{i}@demo.com",
             )
             enquiries_created += 1
 
-            # First 12 become admitted
+            # Create Admission for first 12 students
             if i <= 12:
                 admission_date = enquiry_date + timedelta(days=2)
+
                 Admission.objects.create(
-                    enquiry__student_name=f"Nov Student {i}",  # just for reference
-                    enquiry=Enquiry.objects.get(student_name=f"Nov Student {i}"),
+                    enquiry=enquiry,                    # ← Correct: pass the object
                     course=course_obj,
                     admission_date=admission_date,
                     status='confirmed',
@@ -144,6 +145,6 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"SUCCESS! Created {enquiries_created} enquiries and {admissions_created} admissions for November 2025"
+                f"SUCCESS! Created {enquiries_created} enquiries and {admissions_created} admissions!"
             )
         )
