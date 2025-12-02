@@ -41,6 +41,7 @@ urlpatterns = [
     path('api/admissions/update/<int:id>', views.AdmissionUpdateView.as_view(), name='admission-update'),
     path('api/admissions/delete-multiple', views.AdmissionDeleteView.as_view()),
     path('api/admissions/create_admissions', views.AdmissionUpdateView.as_view(), name='admission-manual-create'),
+    path('api/admission_payment_info/<int:admission_id>', views.AdmissionPaymentInfoView.as_view(), name='payment-info'),
 
 #not interested leads API endpoints
     path('api/not-interested', views.NotInterestedLeadListView.as_view(), name='not-interested-list'),
@@ -51,19 +52,28 @@ urlpatterns = [
     path('api/notifications/all', views.NotificationAllListView.as_view(), name='notification-all'),
     path('api/notifications/<int:pk>', views.NotificationDetailView.as_view(), name='notification-detail'),
     path('api/updatenotification/<int:pk>', views.NotificationUpdateView.as_view(), name='notification-update'),
+    path('api/notifications/admission', views.AdmissionNotificationListView.as_view(), name='admission-notifications'),
 
 
 # chart endpoints
-     path('api/conversion-stats', views.ConversionStatsView.as_view(), name='conversion_stats'),
-
-     path('api/enquiry-source-stats', views.EnquirySourceStatsView.as_view(), name='enquiry_source_stats'),
-
-     path("api/admissions/export-excel", ExportAdmissionExcel.as_view(),name="export-excel-dynamic"),
-          
+    path('api/conversion-stats', views.ConversionStatsView.as_view(), name='conversion_stats'),
+    path('api/enquiry-source-stats', views.EnquirySourceStatsView.as_view(), name='enquiry_source_stats'),
+    path("api/admissions/export-excel", ExportAdmissionExcel.as_view(),name="export-excel-dynamic"),
     path('export/enquiry-source-excel', views.ExportEnquirySourceExcel.as_view(), name='export-enquiry-source'),
-
+#payment
     path('api/payment_create/<int:admission_id>', views.PaymentCreateView.as_view()),
-    path('api/receipt/print/<int:pk>', views.ReceiptPrintView.as_view(), name='receipt-print'),
+    path('api/receipt_data/<int:pk>', views.ReceiptDataView.as_view(), name='receipt-print'),
+    path('api/send-receipt/<int:pk>', views.SendReceiptEmail.as_view(), name='send-receipt-email'),
+
+    path('api/paid-admissions', views.PaidAdmissionsListView.as_view(), name='paid-admissions'),
+    path('api/paid-admissions/<int:pk>', views.PaidAdmissionsDetailView.as_view(), name='paid-admissions-detail'),
+    path('api/paid-admissions/delete-multiple', views.PaidAdmissionDeleteView.as_view(), name='paid-admissions-delete-multiple'),
+    path('api/confirmed-admissions', views.ConfirmedAdmissionsListView.as_view(), name='confirmed-list'),
+    path('api/admissions/confirm/<int:id>', views.ConfirmAdmissionView.as_view(), name='admission-confirm'),
+
+
+#graphical representation of seleted courses in each admisssions
+    path('api/admissions/course-counts', views.CourseAdmissionStatsView.as_view()),
     
 
 ]

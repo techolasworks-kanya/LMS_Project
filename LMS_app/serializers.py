@@ -1,8 +1,15 @@
+from decimal import Decimal
 from rest_framework import serializers
 from .models import *
 from django.utils import timezone
 from datetime import timedelta  
 from datetime import datetime
+import datetime as dt_module 
+
+
+
+
+
 class LocalDateTimeField(serializers.DateTimeField):
     def to_representation(self, value):
         if not value:
@@ -29,7 +36,6 @@ class CourseListSerializer(serializers.ModelSerializer):
         model = course
         fields = ['course_name', 'duration', 'course_fee']
         
-# from datetime import datetime
 
 class EnquiryCreateSerializer(serializers.ModelSerializer):
     course_name = serializers.CharField(
@@ -46,6 +52,32 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
             'educational_qualification': {'required': True},
             'heard_from': {'required': True},
         }
+
+    # ──────────────────────────────────────────────────────────────
+    # 1. DUPLICATE CHECK (phone1 or email)
+    #──────────────────────────────────────────────────────────────
+    def validate(self, attrs):
+        phone1 = attrs.get('phone1')
+        email = attrs.get('email')
+
+        # Treat empty strings as None (same as your old cleaning logic)
+        if email in ['', 'null', 'undefined', None]:
+            email = None
+
+        # Only check non-archived enquiries
+        qs = Enquiry.objects.filter(is_archived=False)
+
+        if phone1 and qs.filter(phone1=phone1).exists():
+            raise serializers.ValidationError({
+                "phone1": f"An enquiry with phone number '{phone1}' already exists."
+            })
+
+        if email and qs.filter(email__iexact=email).exists():
+            raise serializers.ValidationError({
+                "email": f"An enquiry with email '{email}' already exists."
+            })
+
+        return attrs
 
     def to_internal_value(self, data):
         data = dict(data)
@@ -105,6 +137,8 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
             if isinstance(v, list):
                 v = v[0]
             data[f] = None if str(v).strip() in empty_vals else v
+
+        
 
         return data
     
@@ -171,7 +205,6 @@ class CreateUserSerializer(serializers.ModelSerializer):
         return user
     
 
-
 class FollowUpRemarkSerializer(serializers.ModelSerializer):
     added_on = LocalDateTimeField(format='%d/%m/%Y, %I:%M %p', read_only=True)
 
@@ -179,6 +212,7 @@ class FollowUpRemarkSerializer(serializers.ModelSerializer):
         model = FollowUpRemark
         fields = ['id', 'content', 'added_on']
         read_only_fields = ['id', 'added_on']
+
 
 
 
@@ -244,7 +278,6 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
     
-
 class FollowUpDetailSerializer(serializers.ModelSerializer):
     # WRITE-ONLY INPUT FIELDS
     remarks = serializers.ListField(
@@ -340,20 +373,23 @@ class AdmissionListSerializer(serializers.ModelSerializer):
     percentage         = serializers.SerializerMethodField()
     year_of_passing    = serializers.SerializerMethodField()
     enquiry_date       = serializers.SerializerMethodField()
+    admission_date     = serializers.SerializerMethodField()
     university         = serializers.SerializerMethodField()
     flexible_timings   = serializers.SerializerMethodField()
     enquiry_source      = serializers.SerializerMethodField()
     guardian_name      = serializers.SerializerMethodField()
     guardian_occupation = serializers.SerializerMethodField()
     status  = serializers.SerializerMethodField()
-    student_photo = serializers.ImageField(read_only=True)
     aadhaar_number = serializers.CharField(read_only=True)
-    educational_certificate = serializers.FileField(read_only=True)
-    class_schedule = serializers.CharField(read_only=True)
+    
+    student_photo = serializers.SerializerMethodField()
+    educational_certificate = serializers.SerializerMethodField()
+    aadhaar_copy = serializers.SerializerMethodField()
     class_timing = serializers.CharField(read_only=True)
     payment_structure = serializers.CharField(read_only=True)
-    nactit_interest = serializers.CharField(source='get_interested_in_nactit_display')
-    nactit_fee = serializers.DecimalField(max_digits=8, decimal_places=2)
+    interested_in_nactet = serializers.CharField(source='get_interested_in_nactet_display')
+    nactet_fee = serializers.DecimalField(max_digits=8, decimal_places=2)
+    admission_fee = serializers.DecimalField(max_digits=8, decimal_places=2)
 
     class Meta:
         model = Admission
@@ -366,24 +402,62 @@ class AdmissionListSerializer(serializers.ModelSerializer):
             'university', 'flexible_timings',''
 #------------------- New Fields -------------------
             'student_photo', 'aadhaar_number', 'educational_certificate',
-            'class_schedule', 'class_timing', 'payment_structure','nactit_interest','nactit_fee'
+             'class_timing', 'payment_structure','interested_in_nactet','nactet_fee','admission_fee','aadhaar_copy',
+            #  'class_schedule'
         ]
 
+    def get_student_photo(self, obj):
+        if obj.student_photo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.student_photo.url)
+            return obj.student_photo.url
+        return None
+
+    def get_educational_certificate(self, obj):
+        if obj.educational_certificate:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.educational_certificate.url)
+            return obj.educational_certificate.url
+        return None
+    
+    def get_aadhaar_copy(self, obj):
+        if obj.aadhaar_copy:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.aadhaar_copy.url)
+            return obj.aadhaar_copy.url
+        return None
+    
+    
     # ------------------- Safe getters -------------------
     def get_student_name(self, obj):
         return obj.enquiry.student_name if obj.enquiry else None
 
+ 
     def get_date_of_birth(self, obj):
-        return obj.enquiry.date_of_birth if obj.enquiry else None
+        if obj.enquiry and obj.enquiry.date_of_birth:
+            return obj.enquiry.date_of_birth.strftime('%Y-%m-%d')  # Changed to dd-mm-yyyy
+        return None
+    
+    def get_admission_date(self, obj):
+        return obj.admission_date.strftime('%d-%m-%Y')
+
+
 
     def get_course_name(self, obj):
+        if obj.course:
+            return obj.course.course_name
         if obj.enquiry and obj.enquiry.course_interested:
             return obj.enquiry.course_interested.course_name
-        return None
+        return "Not Selected"
     
     def get_course_fee(self, obj):
         if obj.course and obj.course.course_fee is not None:
             return obj.course.course_fee
+        if obj.enquiry and obj.enquiry.course_interested and obj.enquiry.course_interested.course_fee is not None:
+            return obj.enquiry.course_interested.course_fee
         return 0.00
 
     def get_qualification(self, obj):
@@ -432,16 +506,18 @@ class AdmissionListSerializer(serializers.ModelSerializer):
 
    
     def get_guardian_name(self, obj):
-        return obj.enquiry.guardian_name if obj.enquiry and obj.enquiry.guardian_name else "—"
+        return obj.enquiry.guardian_name if obj.enquiry and obj.enquiry.guardian_name else ""
 
    
     def get_guardian_occupation(self, obj):
         if not obj.enquiry:
-            return "—"
+            return ""
         latest_followup = obj.enquiry.follow_up_actions.order_by('-followup_date').first()
         if latest_followup and latest_followup.guardian_occupation:
             return latest_followup.guardian_occupation
-        return obj.enquiry.occupation or "—"
+        return obj.enquiry.occupation or ""
+    
+ 
 
 class AdmissionCreateSerializer(serializers.ModelSerializer):
     enquiry_ids = serializers.ListField(
@@ -451,7 +527,7 @@ class AdmissionCreateSerializer(serializers.ModelSerializer):
         help_text="List of enquiry IDs to convert to admissions"
     )
 
-    followup_ids = serializers.ListField(          # <--- ADD THIS
+    followup_ids = serializers.ListField(     
         child=serializers.IntegerField(),
         write_only=True,
         required=False,
@@ -470,6 +546,10 @@ class AdmissionCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Admission
         fields = ['enquiry_ids','followup_ids']
+        def get_date_of_birth(self, obj):
+            if obj.enquiry and obj.enquiry.date_of_birth:
+                return obj.enquiry.date_of_birth.strftime('%d-%m-%Y')
+            return None    
    
 from django.shortcuts import get_object_or_404
 
@@ -478,6 +558,7 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
     student_name = serializers.CharField(max_length=100)
     date_of_birth = serializers.DateField(required=False, allow_null=True)
     guardian_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    guardian_occupation = serializers.CharField(max_length=100, required=False, allow_blank=True)
     phone1 = serializers.CharField(max_length=15)
     phone2 = serializers.CharField(max_length=15, required=False, allow_blank=True)
     email = serializers.EmailField(required=False, allow_blank=True)
@@ -487,107 +568,204 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
     university_college = serializers.CharField(max_length=200, required=False, allow_blank=True)
     percentage = serializers.FloatField(required=False, allow_null=True)
     year_of_passing = serializers.IntegerField(required=False, allow_null=True)
-
-    # THIS IS THE KEY: Accept raw input, convert manually
-    course_interested = serializers.CharField(max_length=100,write_only=True,required=True,help_text="Accept course ID (number) or course name (string)")
+    flexible_timings = serializers.CharField(max_length=10, required=False, allow_blank=True)
+    class_schedule = serializers.CharField(max_length=100, required=False, allow_blank=True)
+   
+    
+    student_photo = serializers.ImageField(required=False, allow_null=True)
+    educational_certificate = serializers.FileField(required=False, allow_null=True)
+    aadhaar_copy = serializers.FileField(required=False, allow_null=True)
+    
+    course_interested = serializers.CharField(max_length=100, write_only=True, required=True, help_text="Accept course ID (number) or course name (string)")
+    course_fee = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
+    admission_fee = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
 
     class Meta:
         model = Admission
         fields = [
-            'id', 'enquiry_id', 'student_name', 'date_of_birth', 'guardian_name',
+            'id', 'enquiry_id', 'student_name', 'date_of_birth', 'guardian_name','guardian_occupation',
             'phone1', 'phone2', 'email', 'address', 'gender',
             'educational_qualification', 'university_college', 'percentage', 'year_of_passing',
-            'course_interested', 'student_photo', 'aadhaar_number', 'educational_certificate',
-            'class_schedule', 'class_timing', 'payment_structure',
-            'interested_in_nactit', 'status'
+            'course_interested','course_fee','student_photo', 'aadhaar_number', 'educational_certificate', 'class_timing', 
+            'interested_in_nactet', 'status','flexible_timings','class_timing','nactet_fee','class_schedule','admission_fee','aadhaar_copy'
         ]
 
     def to_internal_value(self, data):
-        # Let DRF parse everything normally first
         data = super().to_internal_value(data)
-
-        # Now handle course_interested manually
         raw_course = data.pop('course_interested', None)
-
         if raw_course is None:
             raise serializers.ValidationError({"course_interested": "This field is required."})
-
-        # Convert to string for consistent handling
         raw_course = str(raw_course).strip()
-
         if raw_course.isdigit():
             course_id = int(raw_course)
             course_obj = get_object_or_404(course, id=course_id)
         else:
             course_obj = get_object_or_404(course, course_name__iexact=raw_course)
-
-        # Store the actual course object in validated_data
         data['course_interested'] = course_obj
-
         return data
 
-    def create(self, validated_data):
-        course_obj = validated_data.pop('course_interested')
+    def get_date_of_birth(self, obj):
+        if obj.enquiry and obj.enquiry.date_of_birth:
+            return obj.enquiry.date_of_birth.strftime('%d-%m-%Y')
+        return None
 
-        # Manual enquiry creation
-        if not validated_data.get('enquiry_id'):
-            enquiry = Enquiry.objects.create(
-                student_name=validated_data.pop('student_name'),
-                date_of_birth=validated_data.pop('date_of_birth', None),
-                guardian_name=validated_data.pop('guardian_name', ''),
-                phone1=validated_data.pop('phone1'),
-                phone2=validated_data.pop('phone2', ''),
-                email=validated_data.pop('email', ''),
-                address=validated_data.pop('address', ''),
-                gender=validated_data.pop('gender', 'other'),
-                educational_qualification=validated_data.pop('educational_qualification', ''),
-                university_college=validated_data.pop('university_college', ''),
-                percentage=validated_data.pop('percentage', None),
-                year_of_passing=validated_data.pop('year_of_passing', None),
-                course_interested=course_obj,
-            )
-        else:
-            enquiry = get_object_or_404(Enquiry, id=validated_data.pop('enquiry_id'))
-
-        admission = Admission.objects.create(
-            enquiry=enquiry,
-            course=course_obj,
-            status=validated_data.get('status', 'pending'),
-            **validated_data
-        )
-
-        admission.nactit_fee = 1000.00 if admission.interested_in_nactit == 'yes' else 0.00
-        admission.save()
-
-        return admission
-
+   
     def update(self, instance, validated_data):
         course_obj = validated_data.pop('course_interested', None)
+        
+        student_photo = validated_data.pop('student_photo', None)
+        educational_certificate = validated_data.pop('educational_certificate', None)
+        adhaar_copy = validated_data.pop('aadhaar_copy', None)
+    
+        
+        if student_photo is not None:
+            instance.student_photo = student_photo
+        if educational_certificate is not None:
+            instance.educational_certificate = educational_certificate
 
-        # Update Enquiry
+        if adhaar_copy is not None:
+            instance.aadhaar_copy = adhaar_copy
+
         enquiry = instance.enquiry
         if enquiry:
-            for field in ['student_name', 'date_of_birth', 'guardian_name', 'phone1', 'phone2',
-                          'email', 'address', 'gender', 'educational_qualification',
-                          'university_college', 'percentage', 'year_of_passing']:
+            enquiry_fields = [
+                'student_name', 'date_of_birth', 'guardian_name',
+                'phone1', 'phone2', 'email', 'address', 'gender',
+                'educational_qualification', 'university_college', 'percentage',
+                'year_of_passing', 
+                # 'flexible_timings',
+            ]
+            for field in enquiry_fields:
                 if field in validated_data:
                     setattr(enquiry, field, validated_data.pop(field))
+            
+            guardian_occupation = validated_data.pop('guardian_occupation', None)
+            if guardian_occupation is not None:
+                enquiry.occupation = guardian_occupation
+                
+                followup = FollowUps.objects.filter(enquiry=enquiry).first()
+                if followup:
+                    followup.guardian_occupation = guardian_occupation
+                    followup.save()
+                else:
+                    FollowUps.objects.create(
+                        enquiry=enquiry,
+                        enquiry_source=enquiry.heard_from,
+                        guardian_occupation=guardian_occupation,
+                        status='new'
+                    )
+                    
             if course_obj:
                 enquiry.course_interested = course_obj
             enquiry.save()
 
-        # Update Admission
-        for attr, value in validated_data.items():
-            if hasattr(instance, attr):
-                setattr(instance, attr, value)
-
+        safe_fields = ['class_schedule', 'class_timing', 
+                    'interested_in_nactet', 'aadhaar_number', 'status','admission_fee','aadhaar_copy']
+        for field in safe_fields:
+            if field in validated_data:
+                setattr(instance, field, validated_data.pop(field))
+                
         if course_obj:
             instance.course = course_obj
-
-        instance.nactit_fee = 1000.00 if instance.interested_in_nactit == 'yes' else 0.00
+            
+        instance.nactet_fee = 1000.00 if instance.interested_in_nactet == 'yes' else 0.00
+        
         instance.save()
-
         return instance
+        
+
+    
+    
+    
+
+    def create(self, validated_data):
+        course_obj = validated_data.pop('course_interested')
+        force_under_review = self.context.get('force_under_review', False) or validated_data.pop('force_under_review', False)
+        
+        admission_fields = {
+            'class_schedule': validated_data.pop('class_schedule', None),
+            'class_timing': validated_data.pop('class_timing', None),
+            'interested_in_nactet': validated_data.pop('interested_in_nactet', 'no'),
+            'status': 'under review' if force_under_review else validated_data.pop('status', 'pending'),
+            'aadhaar_number': validated_data.pop('aadhaar_number', None),
+            'student_photo': validated_data.pop('student_photo', None),
+            'educational_certificate': validated_data.pop('educational_certificate', None),
+            'admission_fee': validated_data.pop('admission_fee', None),
+            'aadhaar_copy': validated_data.pop('aadhaar_copy', None),
+        }
+        
+        if not validated_data.get('enquiry_id'):
+            guardian_occupation = validated_data.pop('guardian_occupation', None)
+            
+            enquiry_data = {
+                'student_name': validated_data.pop('student_name'),
+                'date_of_birth': validated_data.pop('date_of_birth', None),
+                'guardian_name': validated_data.pop('guardian_name', ''),
+                'occupation': guardian_occupation, 
+                'phone1': validated_data.pop('phone1'),
+                'phone2': validated_data.pop('phone2', ''),
+                'email': validated_data.pop('email', ''),
+                'address': validated_data.pop('address', ''),
+                'gender': validated_data.pop('gender', 'other'),
+                'educational_qualification': validated_data.pop('educational_qualification', ''),
+                'university_college': validated_data.pop('university_college', ''),
+                'percentage': validated_data.pop('percentage', None),
+                'year_of_passing': validated_data.pop('year_of_passing', None),
+                'flexible_timings': validated_data.pop('flexible_timings', None),
+                'course_interested': course_obj,
+                
+
+
+            }
+            enquiry_data = {k: v for k, v in enquiry_data.items() if v is not None}
+            enquiry = Enquiry.objects.create(**enquiry_data)
+            
+            if guardian_occupation:
+                FollowUps.objects.create(
+                    enquiry=enquiry,
+                    enquiry_source=enquiry.heard_from,
+                    guardian_occupation=guardian_occupation,
+                    status='new'
+                )
+        else:
+            enquiry = get_object_or_404(Enquiry, id=validated_data.pop('enquiry_id'))
+            guardian_occupation = validated_data.pop('guardian_occupation', None)
+            if guardian_occupation is not None:
+                enquiry.occupation = guardian_occupation
+                enquiry.save()
+                
+                followup, created = FollowUps.objects.get_or_create(
+                    enquiry=enquiry,
+                    defaults={
+                        'enquiry_source': enquiry.heard_from,
+                        'guardian_occupation': guardian_occupation,
+                        'status': 'new'
+                    }
+                )
+                if not created:
+                    followup.guardian_occupation = guardian_occupation
+                    followup.save()
+        
+      
+        admission_data = {k: v for k, v in admission_fields.items() if v is not None}
+        admission_data.update({
+            'enquiry': enquiry,
+            'course': course_obj,
+        })
+        
+        admission = Admission(**admission_data)
+        # admission.save(force_under_review=force_under_review)
+        if force_under_review:
+            admission.status = 'under review'
+            admission.save()
+        
+       
+        return admission
+    
+  
+
+
+
 
 
 # serializers.py
@@ -659,6 +837,9 @@ class NotificationUpdateSerializer(serializers.ModelSerializer):
     
 
 
+
+
+
 class ConversionStatsSerializer(serializers.Serializer):
     month = serializers.CharField()
     year = serializers.IntegerField()
@@ -679,11 +860,313 @@ class EnquirySourceStatsSerializer(serializers.Serializer):
 
 
 class PaymentCreateSerializer(serializers.ModelSerializer):
+    payment_mode = serializers.ChoiceField(choices=[
+        ('cash', 'cash'), ('upi', 'upi'), ('card', 'card'), ('bank transfer', 'bank transfer')
+    ])
+    transaction_id = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    remarks = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    receipt_type = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
     class Meta:
         model = Payment
-        fields = ['amount', 'admission_fee', 'payment_mode', 'transaction_id', 'remarks']
+        fields = ['payment_mode', 'transaction_id', 'remarks','receipt_type']
 
     def validate(self, data):
-        if data['payment_mode'] == 'upi' and not data.get('transaction_id'):
-            raise serializers.ValidationError("Transaction ID required for UPI")
+        mode = data.get('payment_mode')
+        if mode != 'cash' and not data.get('transaction_id'):
+            raise serializers.ValidationError({
+                "transaction_id": "Transaction ID is required for upi/card/bank transfer."
+            })
         return data
+
+    def create(self, validated_data):
+        admission = validated_data.pop('admission')
+        amount_paid_now = validated_data.pop('amount_paid_now')  # from view
+
+        # Full total: course fee + nactet
+        course_fee = admission.course.course_fee or 0
+        nactet_fee = 1000 if admission.interested_in_nactet == 'yes' else 0
+        total_fee = course_fee + nactet_fee
+
+        return Payment.objects.create(
+            admission=admission,
+            total_fee_amount=total_fee,
+            admission_fee=amount_paid_now,      
+            **validated_data
+        )
+    
+
+
+class PaidAdmissionListSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='enquiry.student_name', read_only=True)
+    phone = serializers.CharField(source='enquiry.phone1', read_only=True)
+    course_name = serializers.CharField(source='course.course_name', read_only=True, default="Not Assigned")
+    admission_fee_paid = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Admission
+        fields = [
+            'id',
+            'student_code',
+            'student_name',
+            'phone',
+            'course_name',
+            'admission_fee',
+            'admission_fee_paid',
+            'admission_date',
+
+        ]
+
+    def get_admission_fee_paid(self, obj):
+        # Returns True if student has paid admission fee (via Payment)
+        return Payment.objects.filter(admission=obj).exists()
+   
+
+class PaidAdmissionDetailSerializer(serializers.ModelSerializer):
+    # Enquiry fields
+    student_name = serializers.CharField(source='enquiry.student_name', read_only=True)
+    phone = serializers.CharField(source='enquiry.phone1', read_only=True)
+    phone2 = serializers.CharField(source='enquiry.phone2', read_only=True)
+    email = serializers.CharField(source='enquiry.email', read_only=True, allow_null=True)
+    date_of_birth = serializers.DateField(source='enquiry.date_of_birth', read_only=True, format='%d-%m-%Y', allow_null=True)
+    gender = serializers.CharField(source='enquiry.gender', read_only=True, allow_null=True)
+    guardian_name = serializers.CharField(source='enquiry.guardian_name', read_only=True, allow_null=True)
+    guardian_occupation = serializers.SerializerMethodField()
+    educational_qualification = serializers.CharField(source='enquiry.educational_qualification', read_only=True)
+    address = serializers.CharField(source='enquiry.address', read_only=True, allow_null=True)
+    year_of_passing = serializers.IntegerField(source='enquiry.year_of_passing', read_only=True)
+    percentage = serializers.FloatField(source='enquiry.percentage', read_only=True)
+    university_college = serializers.CharField(source='enquiry.university_college', read_only=True)
+
+    # Course
+    course_name = serializers.CharField(source='course.course_name', read_only=True, default="Not Assigned")
+
+    # Payment related
+    admission_fee = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    total_amount_paid = serializers.SerializerMethodField()
+    admission_fee_paid = serializers.SerializerMethodField()  # True/False
+    admission_fee_amount_paid = serializers.SerializerMethodField()  # Actual amount paid toward admission fee
+    payment_mode = serializers.SerializerMethodField()
+    transaction_id = serializers.SerializerMethodField()
+
+    # NACTET
+    interested_in_nactet = serializers.CharField(source='get_interested_in_nactet_display', read_only=True)
+    nactet_fee = serializers.DecimalField(max_digits=8, decimal_places=2, read_only=True)
+
+    # Files with full URLs
+    student_photo = serializers.SerializerMethodField()
+    aadhaar_copy = serializers.SerializerMethodField()
+    educational_certificate = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Admission
+        fields = [
+            'id',  'student_name','student_code', 'admission_date', 'status',
+           'phone','phone2', 'email', 'date_of_birth', 'gender','guardian_name','guardian_occupation',
+            'educational_qualification', 'address', 'course_name',
+            'admission_fee', 'total_amount_paid', 'admission_fee_paid',
+            'admission_fee_amount_paid', 'admission_fee_amount_paid',
+            'interested_in_nactet', 'nactet_fee',
+            'student_photo', 'aadhaar_copy', 'educational_certificate',
+            'class_schedule', 'class_timing', 
+            # 'payment_structure',
+            'aadhaar_number','payment_mode','year_of_passing','percentage','university_college','transaction_id'
+        ]
+
+    def get_guardian_occupation(self, obj):
+        if not obj.enquiry:
+            return None
+        latest_followup = obj.enquiry.follow_up_actions.order_by('-followup_date').first()
+        if latest_followup and latest_followup.guardian_occupation:
+            return latest_followup.guardian_occupation
+        return obj.enquiry.occupation
+
+    def get_student_photo(self, obj):
+        if obj.student_photo and hasattr(obj.student_photo, 'url'):
+            request = self.context.get('request')
+            return request.build_absolute_uri(obj.student_photo.url) if request else obj.student_photo.url
+        return None
+
+    def get_aadhaar_copy(self, obj):
+        if obj.aadhaar_copy and hasattr(obj.aadhaar_copy, 'url'):
+            request = self.context.get('request')
+            return request.build_absolute_uri(obj.aadhaar_copy.url) if request else obj.aadhaar_copy.url
+        return None
+
+    def get_educational_certificate(self, obj):
+        if obj.educational_certificate and hasattr(obj.educational_certificate, 'url'):
+            request = self.context.get('request')
+            return request.build_absolute_uri(obj.educational_certificate.url) if request else obj.educational_certificate.url
+        return None
+
+    def get_total_amount_paid(self, obj):
+        """Total paid across all payments for this admission"""
+        return Payment.objects.filter(admission=obj).aggregate(
+            total=models.Sum('total_fee_amount')
+        )['total'] or 0.00
+
+    def get_admission_fee_paid(self, obj):
+        """Returns True if any payment exists (simple boolean)"""
+        return Payment.objects.filter(admission=obj).exists()
+
+    def get_admission_fee_amount_paid(self, obj):
+        """Actual sum of admission_fee field from Payment model (if you're storing it per payment)"""
+        return Payment.objects.filter(admission=obj).aggregate(
+            total=models.Sum('admission_fee')
+        )['total'] or 0.00
+    
+    def get_payment_mode(self, obj):
+        latest_payment = Payment.objects.filter(admission=obj).order_by('-payment_date').first()
+        if latest_payment:
+            return latest_payment.payment_mode
+        return None
+    
+    def get_transaction_id(self, obj):
+        latest_payment = Payment.objects.filter(admission=obj).order_by('-payment_date').first()
+        if latest_payment:
+            return latest_payment.transaction_id
+        return None
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        
+        # Only include nactet_fee if interested_in_nactet == 'yes'
+        if data['interested_in_nactet'].lower() != 'yes':
+            data.pop('nactet_fee', None)
+        
+        return data 
+
+
+from django.core.exceptions import ValidationError
+from django.db import transaction
+
+class PaidAdmissionUpdateSerializer(serializers.ModelSerializer):
+    # Enquiry fields (writable)
+    student_name = serializers.CharField(max_length=100)
+    date_of_birth = serializers.CharField(                     # ← Changed to CharField
+        required=False, allow_blank=True, allow_null=True,
+        help_text="Format: dd-mm-yyyy (e.g. 15-08-1998)"
+    )
+    guardian_name = serializers.CharField(max_length=100, required=False, allow_blank=True, allow_null=True)
+    phone1 = serializers.CharField(max_length=15)
+    phone2 = serializers.CharField(max_length=15, required=False, allow_blank=True, allow_null=True)
+    email = serializers.EmailField(required=False, allow_null=True, allow_blank=True)
+    address = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    gender = serializers.ChoiceField(choices=Enquiry.GENDER_CHOICES, required=False, allow_null=True)
+    educational_qualification = serializers.CharField(max_length=200)
+    university_college = serializers.CharField(max_length=200, required=False, allow_blank=True, allow_null=True)
+    percentage = serializers.FloatField(required=False, allow_null=True)
+    year_of_passing = serializers.IntegerField(required=False, allow_null=True)
+
+    # Course by name instead of ID
+    course = serializers.CharField(required=False, allow_blank=True)   # ← Now accepts name!
+
+    class_schedule = serializers.ChoiceField(choices=Admission.SCHEDULE_CHOICES, required=False, allow_null=True)
+    class_timing = serializers.CharField(max_length=20, required=False, allow_blank=True, allow_null=True)
+    payment_structure = serializers.ChoiceField(choices=Admission.PAYMENT_STRUCTURE_CHOICES, required=False, allow_null=True)
+    interested_in_nactet = serializers.ChoiceField(choices=Admission.NACTIT_CHOICES, required=False)
+
+    # File fields
+    student_photo = serializers.ImageField(required=False, allow_empty_file=True)
+    aadhaar_copy = serializers.FileField(required=False, allow_empty_file=True)
+    educational_certificate = serializers.FileField(required=False, allow_empty_file=True)
+    aadhaar_number = serializers.CharField(
+        max_length=12, required=False, allow_blank=True,
+        validators=[RegexValidator(r'^\d{12}$', 'Aadhaar must be exactly 12 digits')]
+    )
+
+    class Meta:
+        model = Admission
+        fields = [
+            'student_name', 'date_of_birth', 'guardian_name', 'phone1', 'phone2',
+            'email', 'address', 'gender', 'educational_qualification',
+            'university_college', 'percentage', 'year_of_passing',
+            'course', 'class_schedule', 'class_timing', 'payment_structure',
+            'interested_in_nactet', 'aadhaar_number',
+            'student_photo', 'aadhaar_copy', 'educational_certificate',
+        ]
+
+    
+    def validate_date_of_birth(self, value):
+        if not value:
+            return None
+        try:
+            return dt_module.datetime.strptime(value, "%d-%m-%Y").date()
+        except ValueError:
+            raise serializers.ValidationError("Date must be in dd-mm-yyyy format (e.g. 25-12-1999)")
+    def validate_course(self, value):
+        if not value:
+            return None
+        try:
+            return course.objects.get(course_name__iexact=value.strip())
+        except course.DoesNotExist:
+            raise serializers.ValidationError(f"Course '{value}' not found.")
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        # Handle date_of_birth (converted in validate_date_of_birth)
+        if 'date_of_birth' in validated_data:
+            instance.enquiry.date_of_birth = validated_data.pop('date_of_birth')
+
+        # Handle course (converted in validate_course)
+        if 'course' in validated_data:
+            instance.course = validated_data.pop('course')
+
+        # Extract enquiry data safely
+        enquiry_data = {
+            'student_name': validated_data.pop('student_name', instance.enquiry.student_name),
+            'phone1': validated_data.pop('phone1', instance.enquiry.phone1),
+            'date_of_birth': instance.enquiry.date_of_birth,  # already handled above
+            'guardian_name': validated_data.pop('guardian_name', instance.enquiry.guardian_name),
+            'phone2': validated_data.pop('phone2', instance.enquiry.phone2),
+            'email': validated_data.pop('email', instance.enquiry.email),
+            'address': validated_data.pop('address', instance.enquiry.address),
+            'gender': validated_data.pop('gender', instance.enquiry.gender),
+            'educational_qualification': validated_data.pop('educational_qualification', instance.enquiry.educational_qualification),
+            'university_college': validated_data.pop('university_college', instance.enquiry.university_college),
+            'percentage': validated_data.pop('percentage', instance.enquiry.percentage),
+            'year_of_passing': validated_data.pop('year_of_passing', instance.enquiry.year_of_passing),
+        }
+
+        # Update Enquiry
+        enquiry = instance.enquiry
+        for attr, value in enquiry_data.items():
+            if value is not None:  # Only update if value was provided or defaulted
+                setattr(enquiry, attr, value)
+        enquiry.save()
+
+        # Handle NACTET
+        if 'interested_in_nactet' in validated_data:
+            instance.interested_in_nactet = validated_data.pop('interested_in_nactet')
+            instance.nactet_fee = 1000.00 if instance.interested_in_nactet == 'yes' else 0.00
+
+        # Update remaining fields (files, aadhaar_number, class_schedule, etc.)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        instance.save()
+        return instance
+
+
+class AdmisionNotificationSerializer(serializers.ModelSerializer):
+    class meta:
+        models = Notification
+        fields = ['id','module','content','created_at','is_read']
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+
+
+
+

@@ -1,3 +1,4 @@
+from datetime import date
 from django.db import models
 # from django .contrib.auth.models import AbstractUser
 
@@ -38,6 +39,8 @@ class course(models.Model):
 
     def __str__(self):
         return self.course_name
+
+
 class Enquiry(models.Model):
     student_name = models.CharField(max_length=100)
     date_of_birth = models.DateField(null=True, blank=True)
@@ -45,7 +48,7 @@ class Enquiry(models.Model):
     occupation = models.CharField(max_length=100,blank=True, null=True)
     phone1 = models.CharField(max_length=15)
     phone2 = models.CharField(max_length=15, blank=True, null=True)
-    enquiry_date = models.DateField(auto_now_add=True)
+    enquiry_date = models.DateField(default=date.today)
 
     email = models.EmailField(null=True, blank=True)
     address = models.TextField(null=True, blank=True)
@@ -60,11 +63,11 @@ class Enquiry(models.Model):
     percentage = models.FloatField(blank=True, null=True)
     year_of_passing = models.IntegerField(blank=True, null=True)
     HEARD_FROM_CHOICES = [
-        ('walk in', 'Walk-in'),
-        ('call', 'Call'),
-        ('referral', 'Referral'),
-        ('social media', 'Social Media'),
-        ('website', 'Website'),
+        ('walk in', 'walk in'),
+        ('call', 'call'),
+        ('referral', 'referral'),
+        ('social media', 'social media'),
+        ('website', 'website'),
         ('news paper', 'news paper'),
         ('other', 'other'),
     ]
@@ -81,6 +84,8 @@ class Enquiry(models.Model):
 
     def __str__(self):
         return self.student_name
+
+
 
 class EnquiryArchive(models.Model):
     # NO ForeignKey to Enquiry → completely independent!
@@ -102,7 +107,7 @@ class EnquiryArchive(models.Model):
     course_interested = models.CharField(max_length=100, null=True, blank=True)  # store name only
     flexible_timings = models.CharField(max_length=10, blank=True, null=True)
     
-    enquiry_date = models.DateTimeField(auto_now_add=True)
+    enquiry_date = models.DateTimeField(default=date.today)
     archived_at = models.DateTimeField(null=True, blank=True)
     
     # Track final status
@@ -128,6 +133,7 @@ class EnquiryArchive(models.Model):
 
     def __str__(self):
         return f"{self.student_name} - {self.phone1} - {self.final_status}"
+
 
 
 #follow-up actions
@@ -175,7 +181,7 @@ from django.core.validators import RegexValidator
 
 class Admission(models.Model):
     enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE,null=True,related_name='admissions')
-    admission_date = models.DateField(auto_now_add=True)
+    admission_date = models.DateField(default=date.today)
     course = models.ForeignKey('course', on_delete=models.SET_NULL,null=True, blank=True)
     fee_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     status = models.CharField(max_length=20,choices=[('under review', 'Under Review'),('confirmed', 'Confirmed'),('pending', 'Pending'),('under screening', 'Under Screening'),],default='pending')
@@ -213,9 +219,10 @@ class Admission(models.Model):
             return ''.join(word[0].upper() for word in words[:4])[:4]
     
 
-    student_photo = models.ImageField(upload_to='admissions/photos/',null=True,blank=True,help_text="Upload student passport size photo")
+    student_photo = models.ImageField(upload_to='admissions/certificates',null=True,blank=True,help_text="Upload student passport size photo")
     aadhaar_number = models.CharField(max_length=12,null=True,blank=True,unique=True,validators=[RegexValidator(r'^\d{12}$', 'Aadhaar must be exactly 12 digits')],help_text="Enter 12-digit Aadhaar number")
-    educational_certificate = models.FileField(upload_to='admissions/certificates/',null=True,blank=True,help_text="Upload 10th/12th/Degree certificate (PDF/Image)")
+    aadhaar_copy = models.FileField(upload_to='admissions/certificates/aadhaar',null=True,blank=True,help_text="Upload Aadhaar card copy (PDF/Image)")
+    educational_certificate = models.FileField(upload_to='admissions/certificates',null=True,blank=True,help_text="Upload 10th/12th/Degree certificate (PDF/Image)")
     SCHEDULE_CHOICES = [
         ('online', 'Online'),
         ('offline', 'Offline'),
@@ -240,12 +247,13 @@ class Admission(models.Model):
 
     payment_structure = models.CharField(max_length=20,choices=PAYMENT_STRUCTURE_CHOICES,null=True,blank=True,help_text="How student will pay fees")
     NACTIT_CHOICES = [
-        ('yes', 'Yes'),
-        ('no', 'No'),
+        ('yes', 'yes'),
+        ('no', 'no'),
     ]
-    interested_in_nactit = models.CharField( max_length=5,choices=NACTIT_CHOICES,default='no',help_text="Is student interested in NACTIT exam?")
-    nactit_fee = models.DecimalField(max_digits=8,decimal_places=2,default=0.00,editable=False,help_text="₹1000 added if interested in NACTIT"
+    interested_in_nactet = models.CharField( max_length=5,choices=NACTIT_CHOICES,default='no',help_text="Is student interested in NACTIT exam?")
+    nactet_fee = models.DecimalField(max_digits=8,decimal_places=2,default=0.00,editable=False,help_text="₹1000 added if interested in NACTIT"
     )
+    admission_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     class Meta:
         verbose_name_plural = "Admissions"
         ordering = ['-admission_date']
@@ -255,68 +263,13 @@ class Admission(models.Model):
         if self.enquiry and self.enquiry.student_name:
             return f"Admission: {self.enquiry.student_name} - {self.course or 'No Course'}"
         return f"Admission ID: {self.id} (Student Deleted)"
-  
-    # def save(self, *args, **kwargs):
-    #     if not self.student_code:
-    #         now = timezone.now()
-    #         month = now.strftime('%b').upper()
 
-    #         # === DETERMINE COURSE NAME ===
-    #         if self.course:
-    #             course_name = self.course.course_name
-    #         elif self.enquiry and self.enquiry.course_interested:
-    #             course_name = self.enquiry.course_interested.course_name
-    #         else:
-    #             course_name = None
-
-    #         # === GET SHORT CODE ===
-    #         course_code = self.get_course_code(course_name) 
-
-    #         sequence = Admission.objects.filter(
-    #             admission_date__year=now.year,
-    #             admission_date__month=now.month
-    #         ).count() + 1
-
-    #         self.student_code = f"TS-EKM-GST-{course_code}-{month}-{sequence:02d}"
-
-    #     if getattr(self, 'interested_in_nactit', None) == 'yes':
-    #         self.nactit_fee = 1000.00
-    #     else:
-    #         self.nactit_fee = 0.00
-
-    #     super().save(*args, **kwargs)
     def save(self, *args, **kwargs):
-        is_new = self.pk is None  # First time saving?
-
-        if is_new and not kwargs.pop('force_under_review', False):
-            # Only auto-set "pending" if coming from enquiry/followup conversion
-            # Manual creation will pass force_under_review=True → becomes "under review"
-            self.status = 'pending'
-
-        if not self.student_code:
-            now = timezone.now()
-            month = now.strftime('%b').upper()
-
-            if self.course:
-                course_name = self.course.course_name
-            elif self.enquiry and self.enquiry.course_interested:
-                course_name = self.enquiry.course_interested.course_name
-            else:
-                course_name = None
-
-            course_code = Admission.get_course_code(course_name)
-
-            sequence = Admission.objects.filter(
-                admission_date__year=now.year,
-                admission_date__month=now.month
-            ).count() + (1 if is_new else 0)
-
-            self.student_code = f"TS-EKM-GST-{course_code}-{month}-{sequence:02d}"
-
-        # NACTIT fee
-        self.nactit_fee = 1000.00 if getattr(self, 'interested_in_nactit', 'no') == 'yes' else 0.00
+        
+        self.nactet_fee = 1000.00 if getattr(self, 'interested_in_nactet', 'no') == 'yes' else 0.00
 
         super().save(*args, **kwargs)
+
 
 class NotInterestedLead(models.Model):
     followup = models.ForeignKey(FollowUps, on_delete=models.SET_NULL,null=True, blank=True,related_name='not_interested_lead')
@@ -346,8 +299,9 @@ class Notification(models.Model):
         ('admission', 'Admission'),
         ('general', 'General'),
     ]
-
+    admission = models.ForeignKey(Admission, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications')
     module = models.CharField(max_length=20, choices=MODULE_CHOICES,null=True, blank=True)
+    auto_expire_at = models.DateTimeField(null=True, blank=True)
     content = models.TextField()
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     is_read = models.BooleanField(default=False)
@@ -360,22 +314,35 @@ class Notification(models.Model):
         return f"{self.content[:50]}... ({'Read' if self.is_read else 'Unread'})"
 
 
+
 class Payment(models.Model):
     PAYMENT_MODE_CHOICES = [
-        ('cash', 'Cash'),
-        ('upi', 'UPI'),
-        ('card', 'Card'),
-        ('bank_transfer', 'Bank Transfer'),
+        ('cash', 'cash'),
+        ('upi', 'upi'),
+        ('card', 'card'),
+        ('bank transfer','bank transfer'),
     ]
 
     admission = models.ForeignKey(Admission, on_delete=models.CASCADE, related_name='payments')
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    admission_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    total_fee_amount = models.DecimalField(max_digits=10, decimal_places=2)
     payment_mode = models.CharField(max_length=20, choices=PAYMENT_MODE_CHOICES)
     transaction_id = models.CharField(max_length=100, blank=True, null=True)
     remarks = models.TextField(blank=True, null=True)
     payment_date = models.DateTimeField(auto_now_add=True)
     receipt_number = models.CharField(max_length=20, unique=True, blank=True)
+    admission_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    RECEIPT_TYPE_CHOICES = [
+        ('print receipt', 'print receipt'),
+        ('email receipt', 'email receipt'),
+        ('both', 'both')
+    ]
+
+    receipt_type = models.CharField(max_length=20, choices=RECEIPT_TYPE_CHOICES, default='print receipt')
+
+    class Meta:
+        verbose_name_plural = "Payments"
+        ordering = ['-payment_date']
+
 
     def save(self, *args, **kwargs):
         if not self.receipt_number:
@@ -387,3 +354,17 @@ class Payment(models.Model):
 
     def __str__(self):
         return self.receipt_number
+    
+
+
+
+
+
+
+
+
+
+
+
+
+

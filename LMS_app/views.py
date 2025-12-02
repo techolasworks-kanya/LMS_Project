@@ -1,3 +1,4 @@
+import decimal
 from django.shortcuts import render
 from rest_framework import generics
 from .models import *
@@ -13,10 +14,73 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView  
 from rest_framework.pagination import PageNumberPagination
 
+def create_notification(module, content, admission=None):
+    """Create notification with auto-expiry and smart deduplication"""
+    # Avoid duplicates for same admission + similar message
+    if admission:
+        existing = Notification.objects.filter(
+            admission=admission,
+            module=module,
+            content__icontains=content.split("Missing:")[0] if "Missing" in content else content[:50],
+            created_at__gte=timezone.now() - timedelta(hours=2)  # Avoid spam in 2 hours
+        ).first()
+
+        if existing:
+            # Refresh expiry
+            existing.auto_expire_at = timezone.now() + timedelta(days=30)
+            existing.is_read = False
+            existing.save()
+            return existing
+
+    return Notification.objects.create(
+        module=module,
+        content=content,
+        admission=admission,
+        auto_expire_at=timezone.now() + timedelta(days=30)
+    )
+
+def create_document_pending_notification(admission):
+    missing = []
+    # if not admission.student_photo:
+    #     missing.append("Passport Size Photo")
+    # if not admission.aadhaar_copy:
+    #     missing.append("Aadhaar Card Copy")
+    if not admission.educational_certificate:
+        missing.append("Educational Certificate")
+
+    if missing:
+        student_name = admission.enquiry.student_name if admission.enquiry else "Unknown"
+        course_name = admission.course.course_name if admission.course else "Unknown Course"
+
+        content = f"Documents pending for {student_name} ({course_name}) — Missing: {', '.join(missing)}"
+
+        create_notification(module='admission', content=content, admission=admission)
+
+
+def trigger_fee_pending_notification(admission):
+    if admission.admission_fee > 0 and admission.fee_paid < admission.admission_fee:
+        content = f"Admission fee pending: {admission.enquiry.student_name} owes ₹{admission.admission_fee - admission.fee_paid}"
+        create_notification('admission', content, admission)
+
+def trigger_non_confirmed_notifications():
+    pending = Admission.objects.filter(
+        is_deleted=False,
+        status__in=['pending', 'under review'],
+        admission_date__lte=timezone.now().date() - timedelta(days=3)  # 3+ days old
+    )
+    for adm in pending:
+        content = f"Admission pending confirmation: {adm.enquiry.student_name} ({adm.course.course_name})"
+        create_notification('admission', content, adm)
+
+
 
 @api_view(['GET'])
 def server_running(request):
     return Response({"message": "Server running"})
+
+
+
+
 
 
 
@@ -275,7 +339,6 @@ class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 # Follow-up List and Create
 class FollowUpListCreateView(generics.ListCreateAPIView):
-    # queryset = FollowUps.objects.select_related('enquiry', 'enquiry__course_interested').prefetch_related('remarks')
     def get_queryset(self):
         if self.request.method == 'GET':
             return FollowUps.objects.select_related(
@@ -319,8 +382,7 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
 
             created_followups.append(followup)
 
-        # DELETE enquiries
-        # enquiries.delete()
+     
 
         self.created_followups = created_followups
 
@@ -338,7 +400,6 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
             "data": response_data
         }, status=status.HTTP_201_CREATED)
     
-
 
 class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = FollowUps.objects.select_related(
@@ -366,12 +427,6 @@ class FollowUpDetailView(generics.RetrieveUpdateDestroyAPIView):
             )
             enquiry_serializer.is_valid(raise_exception=True)
             enquiry_serializer.save()
-
-        # # --- ADD NEW REMARKS ---
-        # remarks = validated_data.pop('remarks', [])
-        # for content in remarks:
-        #     if content.strip():
-        #         FollowUpRemark.objects.create(followup=instance, content=content.strip())
 
         
 
@@ -407,6 +462,7 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
         queryset = Admission.objects.select_related(
             'enquiry', 'enquiry__course_interested'
         ).filter(is_deleted=False)
+        queryset = queryset.exclude(payments__isnull=False)
 
         month = self.request.query_params.get("month")
         year = self.request.query_params.get("year")
@@ -460,7 +516,6 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
                 created_admissions.append(admission)
 
                 followup.delete()
-                # enquiry.delete()
 
             self.created_admissions = created_admissions
             return
@@ -491,15 +546,17 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
                 )
                 created_admissions.append(admission)
 
-                # enquiry.delete()
 
-            # enquiries.delete()
+                create_notification(
+                    module='admission',
+                    content=f"New admission created: {admission.enquiry.student_name} - {admission.course.course_name}",
+                    admission=admission
+                )
+
             self.created_admissions = created_admissions
             return
 
-        # ---------------------------------------------------
-        # NOTHING PROVIDED
-        # ---------------------------------------------------
+       
         raise serializers.ValidationError(
             "Either 'followup_ids' or 'enquiry_ids' is required."
         )
@@ -524,48 +581,59 @@ class AdmissionDetailView(generics.RetrieveAPIView):
     permission_classes = [AllowAny]
 
 class AdmissionUpdateView(generics.UpdateAPIView):
-    queryset = Admission.objects.select_related('enquiry', 'enquiry__course_interested')
+    queryset = Admission.objects.select_related('enquiry', 'enquiry__course_interested','course').prefetch_related('enquiry__follow_up_actions')
     serializer_class = AdmissionUpdateSerializer
     permission_classes = [AllowAny]
     lookup_field = 'id'
 
 
+   
     def post(self, request, *args, **kwargs):
-        # If no ID in URL → Manual Create
         if not kwargs.get('id'):
-            serializer = self.get_serializer(data=request.data)
+            # Combine data and files
+            data = request.data.copy()
+            data.update(request.FILES)
+            
+            serializer = self.get_serializer(data=data, context={'force_under_review': True})
             serializer.is_valid(raise_exception=True)
+            
             admission = serializer.save(force_under_review=True)
-            admission.save()
+            full_data = AdmissionListSerializer(admission, context={'request': request}).data
+
+            create_notification(
+                module='admission',
+                content=f"New admission created: {admission.enquiry.student_name} - {admission.course.course_name}",
+                admission=admission
+            )
+
             return Response({
                 "status": "Manual admission created successfully!",
-                "admission_id": admission.id,
-                # "student_code": admission.student_code,
-                "message": "Go to payment now"
+                "data": full_data
             }, status=201)
 
-        # Otherwise → Normal Update (existing)
         return self.patch(request, *args, **kwargs)
 
+   
     def patch(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance.is_deleted:
             return Response({"error": "Cancelled admission cannot be updated"}, status=400)
 
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        data = request.data.copy()
+        data.update(request.FILES)
+
+        serializer = self.get_serializer(instance, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         updated_admission = serializer.save()
-
-
-        # Any update → change status to "under review"
-        updated_admission = serializer.save()
+        
         if updated_admission.status not in ['confirmed', 'cancelled']:
             updated_admission.status = 'under review'
-            updated_admission.save()
+            updated_admission.save(update_fields=['status'])
+            updated_admission.refresh_from_db()
 
-
-        # Return FULL data using your existing ListSerializer
-        full_data = AdmissionListSerializer(updated_admission).data
+        full_data = AdmissionListSerializer(updated_admission, context={'request': request}).data   
+        # TRIGGER NOTIFICATION IF STILL MISSING DOCS
+        create_document_pending_notification(updated_admission)
         return Response({
             "status": "Admission updated successfully",
             "data": full_data
@@ -586,6 +654,41 @@ class AdmissionDeleteView(APIView):
         return Response({
             "message": f"{updated} admission(s) cancelled successfully"
         }, status=200)
+
+
+class AdmissionPaymentInfoView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, admission_id=None):
+        admission = get_object_or_404(Admission, id=admission_id, is_deleted=False)
+
+        # Get course name
+        if admission.course:
+            course_name = admission.course.course_name
+            course_fee = admission.course.course_fee or Decimal('0.00')
+        elif admission.enquiry and admission.enquiry.course_interested:
+            course_name = admission.enquiry.course_interested.course_name
+            course_fee = admission.enquiry.course_interested.course_fee or Decimal('0.00')
+        else:
+            course_name = "Not Selected"
+            course_fee = Decimal('0.00')
+
+        # NACTET fee
+        nactet_fee = Decimal('1000.00') if admission.interested_in_nactet == 'yes' else Decimal('0.00')
+
+        # Total amount = course + nactet
+        total_amount = course_fee + nactet_fee
+
+        # Admission fee (registration fee)
+        admission_fee = admission.admission_fee or Decimal('0.00')
+
+        return Response({
+            "course_name": course_name,
+            "total_amount": f"{total_amount:.2f}",
+            "admission_fee": f"{admission_fee:.2f}"
+        })
+
+
 
 
 # NOT INTERESTED LEAD
@@ -685,17 +788,32 @@ class NotificationCreateView(generics.CreateAPIView):
             "data": NotificationSerializer(notification).data
         }, status=status.HTTP_201_CREATED)
 
-# ALL NOTIFICATIONS (filtered by module)
+
+
+
+
 class NotificationAllListView(generics.ListAPIView):
     serializer_class = NotificationSerializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):
-        module = self.request.query_params.get('module')
-        queryset = Notification.objects.all()
-        if module:
-            queryset = queryset.filter(module=module)
-        return queryset
+        # ONLY ENQUIRY MODULE — Admission notifications are hidden here
+        return Notification.objects.filter(
+            module='enquiry'
+        ).order_by('-created_at')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        
+        unread_count = queryset.filter(is_read=False).count()
+
+        return Response({
+            "unread_count": unread_count,
+            "notifications": serializer.data
+        })
+
+
 
 # OPEN → AUTO MARK READ
 class NotificationDetailView(generics.RetrieveAPIView):
@@ -732,16 +850,41 @@ class NotificationUpdateView(generics.UpdateAPIView):
         return self.partial_update(request, *args, **kwargs)
 
 
+
+# This shows ONLY ADMISSION notifications (separate section/tab)
+class AdmissionNotificationListView(generics.ListAPIView):
+    serializer_class = NotificationSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        return Notification.objects.filter(
+            module='admission'
+        ).order_by('-created_at')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        
+        unread_count = queryset.filter(is_read=False).count()
+
+        return Response({
+            "unread_count": unread_count,
+            "notifications": serializer.data
+        })
+
+
 import calendar
 from datetime import timedelta, date
+
+
+
 class ConversionStatsView(APIView):
     def get(self, request):
         today = date.today()
         current_month = today.month
         current_year = today.year
 
-        # Previous month
-        # Compute previous month by going to the first day of current month and subtracting one day
+       
         prev_date = (today.replace(day=1) - timedelta(days=1))
         prev_month = prev_date.month
         prev_year = prev_date.year
@@ -772,7 +915,6 @@ class ConversionStatsView(APIView):
 
         prev_rate = round((prev_admissions / prev_enquiries) * 100) if prev_enquiries > 0 else 0
 
-        # === COMPARISON (This is what you wanted) ===
         change = current_rate - prev_rate
 
         if change > 0:
@@ -797,6 +939,9 @@ class ConversionStatsView(APIView):
 
         serializer = ConversionStatsSerializer(data)
         return Response(serializer.data)
+
+
+
 from collections import Counter
 class EnquirySourceStatsView(APIView):
     def get(self, request):
@@ -1149,156 +1294,470 @@ class ExportEnquirySourceExcel(APIView):
 
 class PaymentCreateView(APIView):
     permission_classes = [AllowAny]
-
     def post(self, request, admission_id=None):
-        # Get admission from URL
         admission = get_object_or_404(Admission, id=admission_id, is_deleted=False)
+        amount_paid_now = admission.admission_fee or Decimal('500.00')
 
         serializer = PaymentCreateSerializer(data=request.data)
-        if serializer.is_valid():
-            payment = serializer.save(admission=admission)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
 
-            # Update total fee_paid in admission
-            admission.fee_paid += payment.amount
-            admission.save()
+        # Create payment
+        payment = serializer.save(
+            admission=admission,
+            amount_paid_now=amount_paid_now
+        )
 
-            return Response({
-                "status": "Payment recorded successfully!",
-                "payment_id": payment.id,
-                "receipt_number": payment.receipt_number,
-                "student_name": payment.admission.enquiry.student_name if payment.admission.enquiry else "Student",
-                "course_name": payment.admission.course.course_name if payment.admission.course else "N/A",
-                "amount_paid": str(payment.amount + payment.admission_fee),
-                "print_url": f"/receipt/print/{payment.id}/",
-                "message": "Receipt ready to print"
-            }, status=201)
+        # Generate student_code ONLY if it's still blank
+        if not admission.student_code:
+            now = timezone.now()
+            year_month = now.strftime("%b%Y").upper()  # NOV2025
 
-        return Response(serializer.errors, status=400)
+            # Get course name safely
+            course_name = "Unknown Course"
+            if admission.course:
+                course_name = admission.course.course_name
+            elif admission.enquiry and admission.enquiry.course_interested:
+                course_name = admission.enquiry.course_interested.course_name
+
+            course_code = Admission.get_course_code(course_name)
+
+            # Count only admissions from the SAME month/year that already have a code
+            # This prevents duplicates even if multiple payments happen at once
+            base_count = Admission.objects.filter(
+                admission_date__year=now.year,
+                admission_date__month=now.month,
+                student_code__isnull=False
+            ).count()
+
+            sequence = base_count + 1
+
+            admission.student_code = f"TS-EKM-GST-{course_code}-{year_month}-{sequence:04d}"
+            admission.save(update_fields=['student_code'])
+
+        # Update total fee_paid
+        admission.fee_paid += amount_paid_now
+        admission.save(update_fields=['fee_paid'])
+
+        # def post(self, request, admission_id=None):
+        #     admission = get_object_or_404(Admission, id=admission_id, is_deleted=False)
+        #     amount_paid_now = admission.admission_fee or Decimal('500.00')
+
+        #     serializer = PaymentCreateSerializer(data=request.data)
+        #     if not serializer.is_valid():
+        #         return Response(serializer.errors, status=400)
+
+        #     # Create payment
+        #     payment = serializer.save(
+        #         admission=admission,
+        #         amount_paid_now=amount_paid_now
+        #     )
+
+            
+        #     if not admission.student_code:
+        #         now = timezone.now()
+        #         year_month = now.strftime("%b%Y").upper()  # NOV2025, DEC2025
+
+        #         # Get course name safely
+        #         if admission.course:
+        #             course_name = admission.course.course_name
+        #         elif admission.enquiry and admission.enquiry.course_interested:
+        #             course_name = admission.enquiry.course_interested.course_name
+        #         else:
+        #             course_name = "Unknown Course"
+
+        #         course_code = Admission.get_course_code(course_name)
+
+        #         # Count how many admissions this month already have student_code
+        #         # This ensures sequence restarts every month
+        #         sequence = Admission.objects.filter(
+        #             admission_date__year=now.year,
+        #             admission_date__month=now.month,
+        #             # student_code__isnull=False
+        #         ).count() + 1
+
+        #         # Format: TS-EKM-GST-PFS-NOV2025-001
+        #         admission.student_code = f"TS-EKM-GST-{course_code}-{year_month}-{sequence:04d}"
+        #         admission.save(update_fields=['student_code'])
+
+        #     # Update total fee_paid in Admission
+        #     admission.fee_paid += amount_paid_now
+        #     admission.save(update_fields=['fee_paid'])
+
+            # Final Response – Exactly What You Want
+        return Response({
+            "payment_id": payment.id,
+            "student_name": admission.enquiry.student_name if admission.enquiry else "Unknown",
+            "receipt_number": payment.receipt_number,
+            "student_code": admission.student_code,
+            "payment_mode": payment.get_payment_mode_display(),
+            "transaction_id": payment.transaction_id or "N/A",
+            "course_name": admission.course.course_name if admission.course else "Not Selected",
+            "admission_fee": f"{amount_paid_now:.2f}",
+            "remarks": payment.remarks or "",
+            "receipt_type": payment.get_receipt_type_display(),
+        }, status=201)
 
 
 from django.shortcuts import get_object_or_404
-class ReceiptPrintView(APIView):
+class ReceiptDataView(APIView):
     def get(self, request, pk):
         payment = get_object_or_404(Payment, id=pk)
-        student = payment.admission.enquiry
-        student_name = student.student_name if student else "Student"
-        course_name = payment.admission.course.course_name if payment.admission.course else "N/A"
+        admission = payment.admission
+        enquiry = admission.enquiry if admission and admission.enquiry else None
+        receipt_type = payment.get_receipt_type_display()
 
-        html = f"""
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <title>Receipt - {payment.receipt_number}</title>
-            <style>
-                body {{ font-family: 'Arial', sans-serif; margin: 40px; background: #f9f9f9; }}
-                .receipt {{ 
-                    max-width: 700px; margin: auto; border: 3px solid #003366; 
-                    padding: 30px; background: white; box-shadow: 0 0 20px rgba(0,0,0,0.1);
-                }}
-                .header {{ background: #003366; color: white; padding: 20px; text-align: center; margin: -30px -30px 30px -30px; }}
-                .header h1 {{ margin: 0; font-size: 28px; }}
-                table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
-                td {{ padding: 10px; border-bottom: 1px solid #ddd; }}
-                .label {{ font-weight: bold; width: 180px; }}
-                .amount-table {{ width: 100%; border: 2px solid #000; margin: 30px 0; }}
-                .amount-table th, .amount-table td {{ padding: 12px; text-align: left; border: 1px solid #000; }}
-                .amount-table th {{ background: #f0f0f0; }}
-                .total-row {{ background: #e6f3ff !important; font-weight: bold; font-size: 18px; }}
-                .footer {{ margin-top: 50px; text-align: center; color: #003366; }}
-                .print-btn {{ 
-                    background: #003366; color: white; padding: 15px 40px; 
-                    font-size: 18px; border: none; border-radius: 8px; cursor: pointer; margin: 20px 10px;
-                }}
-                @media print {{
-                    body {{ margin: 0; }}
-                    .no-print {{ display: none; }}
-                }}
-            </style>
-        </head>
-        <body onload="window.print()">
-            <div class="receipt">
-                <div class="header">
-                    <h1>TECHOLAS TECHNOLOGIES</h1>
-                    <p>techolas@gmail.com | 1234567890</p>
-                </div>
+        if not enquiry:
+            return Response({"error": "Student enquiry not found"}, status=404)
 
-                <table>
-                    <tr>
-                        <td class="label">Receipt No:</td>
-                        <td><strong>{payment.receipt_number}</strong></td>
-                        <td class="label">Date:</td>
-                        <td><strong>{payment.payment_date.strftime('%d/%m/%Y')}</strong></td>
-                    </tr>
-                    <tr>
-                        <td class="label">Bill To :</td>
-                        <td></td>
-                        <td class="label">Payment Mode :</td>
-                        <td><strong>{payment.get_payment_mode_display()}</strong></td>
-                    </tr>
-                    <tr>
-                        <td class="label">Student Name :</td>
-                        <td><strong>{student_name}</strong></td>
-                        <td class="label">Transaction ID :</td>
-                        <td><strong>{payment.transaction_id or 'N/A'}</strong></td>
-                    </tr>
-                    <tr>
-                        <td class="label">Student ID :</td>
-                        <td colspan="3"><strong>{payment.admission.student_code}</strong></td>
-                    </tr>
-                </table>
+        admission_fee = float(admission.admission_fee) if admission.admission_fee else 0.00
+        amount_paid = float(payment.total_fee_amount)
 
-                <table class="amount-table">
-                    <tr><th>Description</th><th>Amount</th></tr>
-                    <tr>
-                        <td>Course Name : {course_name}</td>
-                        <td>₹{payment.amount}</td>
-                    </tr>
-                    {"<tr><td>Admission Fee</td><td>₹{}</td></tr>".format(payment.admission_fee) if payment.admission_fee > 0 else ""}
-                    <tr class="total-row">
-                        <td>Total Amount Paid</td>
-                        <td>₹{payment.amount + payment.admission_fee}</td>
-                    </tr>
-                </table>
+        transaction_id = "N/A"
+        if payment.payment_mode != "cash" and payment.transaction_id:
+            transaction_id = payment.transaction_id
 
-                <p><strong>Remarks:</strong> {payment.remarks or 'None'}</p>
+        data = {
+            "student_name": enquiry.student_name or "N/A",
+            "student_code": admission.student_code or "Not Generated Yet",
+            "course_name": admission.course.course_name if admission.course else "Not Assigned",
+            "receipt_number": payment.receipt_number,
+            "current_date": timezone.now().strftime("%d/%m/%Y"),
+            "payment_mode": payment.get_payment_mode_display(),
+            "transaction_id": transaction_id,
+            "admission_fee": admission_fee,
+            # "total_fee": amount_paid + admission_fee + (float(admission.nactet_fee) if admission.nactet_fee else 0),
+            "total_fee": amount_paid +(float(admission.nactet_fee) if admission.nactet_fee else 0),
+            "remarks": payment.remarks or "",
+            "receipt_type": payment.get_receipt_type_display(),
+      
+        }
 
-                <div class="footer">
-                    <h3>Thank you for your payment</h3>
-                    <ul style="list-style: none; padding: 0;">
-                        <li>• This is computer generated and valid without signature</li>
-                        <li>• No refund applicable unless explicitly mentioned</li>
-                    </ul>
-                </div>
-
-                <div class="no-print" style="text-align: center; margin-top: 40px;">
-                    <button class="print-btn" onclick="window.print()">Print Receipt</button>
-                    <button class="print-btn" style="background: #666;" onclick="window.close()">Close</button>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        return HttpResponse(html)
+        return Response(data)
     
+from django.core.mail import EmailMessage
+
+class SendReceiptEmail(APIView):
+  
+    def post(self, request, pk):
+        # 1. Get Payment using pk from URL
+        payment = get_object_or_404(
+            Payment.objects.select_related('admission__enquiry'),
+            id=pk
+        )
+        admission = payment.admission
+        enquiry = admission.enquiry
+
+        if not enquiry or not enquiry.email:
+            return Response({
+                "error": "Student email not found. Please add email in enquiry."
+            }, status=400)
+
+        student_name = enquiry.student_name
+        student_email = enquiry.email
+        receipt_number = payment.receipt_number
+
+        # 2. Get the uploaded PDF from React
+        pdf_file = request.FILES.get('receipt')
+        if not pdf_file:
+            return Response({"error": "PDF file is required (key: 'receipt')"}, status=400)
+
+        # 3. Set clean filename
+        filename = f"Receipt_{receipt_number}_{student_name.replace(' ', '_')}.pdf"
+
+        # 4. Email content
+        subject = f"Payment Receipt - {receipt_number}"
+        message = f"""
+Dear {student_name},
+
+Thank you for your payment!
+
+Please find your official payment receipt attached.
+
+Receipt Number : {receipt_number}
+Date           : {timezone.now().strftime("%d %B %Y")}
+
+If you have any questions, feel free to contact us.
+
+Best Regards,  
+Techno Solutions Team  
+Kochi, Kerala  
++91-XXXXXXXXXX | info@technosolutions.in
+        """.strip()
+
+        # 5. Create and send email
+        email = EmailMessage(
+            subject=subject,
+            body=message,
+            from_email="sysolmachinetest@gmail.com",
+            to=[student_email],
+            # cc=["accounts@technosolutions.in"],  # optional
+        )
+        email.attach(filename, pdf_file.read(), 'application/pdf')
+
+        try:
+            email.send(fail_silently=False)
+            return Response({
+                "success": True,
+                "message": f"Receipt emailed successfully to {student_email}",
+                "student_name": student_name,
+                "receipt_number": receipt_number,
+                "sent_to": student_email
+            }, status=200)
+        except Exception as e:
+            return Response({
+                "error": "Failed to send email",
+                "details": str(e)
+            }, status=500)
+
+
+
+class PaidAdmissionsListView(APIView):
+   
+
+    def get(self, request):
+        paid_admissions = Admission.objects.filter(
+            is_deleted=False,payments__isnull=False,
+            status__in=['pending', 'under review', 'under screening'],
+            fee_paid__gt=0  
+        ).select_related('enquiry', 'course').order_by('-id')
+    
+        serializer = PaidAdmissionListSerializer(paid_admissions, many=True)
+        return Response({
+            "count": paid_admissions.count(),
+            "results": serializer.data
+        })
+
+
+class PaidAdmissionsDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Admission.objects.filter(is_deleted=False).select_related('enquiry', 'course')
+    serializer_class = PaidAdmissionDetailSerializer  
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return PaidAdmissionUpdateSerializer
+        return PaidAdmissionDetailSerializer
+
+    def get_queryset(self):
+        # Only allow paid admissions
+        return Admission.objects.filter(is_deleted=False, payments__isnull=False)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        # Return full details after update
+        return Response(PaidAdmissionDetailSerializer(instance, context={'request': request}).data)
 
 
 
 
+class PaidAdmissionUpdateView(generics.UpdateAPIView):
+    queryset = Admission.objects.filter(is_deleted=False)
+    serializer_class = PaidAdmissionUpdateSerializer
+    lookup_field = 'id'
+    permission_classes = [AllowAny]  
+
+    def get_queryset(self):
+        return Admission.objects.filter(is_deleted=False, fee_paid__gt=0)
+
+    def get_serializer_context(self):
+        return {'request': self.request}
+
+    def patch(self, request, *args, **kwargs):
+        return self.partial_update(request, *args, **kwargs)
+
+    def put(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
+
+
+# DELETE multiple paid admissions 
+class PaidAdmissionDeleteView(APIView):
+    permission_classes = [AllowAny]
+
+    def delete(self, request):
+        ids = request.data.get('ids', [])
+        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+            return Response({"error": "'ids' must be a list of integers"}, status=400)
+
+        admissions = Admission.objects.filter(id__in=ids, is_deleted=False, payments__isnull=False)
+        deleted_count = admissions.update(is_deleted=True)
+
+        return Response({
+            "status": "Success",
+            "message": f"{deleted_count} paid admission(s) deleted."
+        }, status=200)
+
+# 1. LIST Confirmed Admissions
+class ConfirmedAdmissionsListView(generics.ListAPIView):
+    serializer_class = PaidAdmissionDetailSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        return Admission.objects.filter(
+            is_deleted=False,
+            status='confirmed' 
+        ).select_related('enquiry', 'course') \
+         .prefetch_related('payments') \
+         .order_by('-admission_date')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True, context={'request': request})
+        return Response({
+            "count": queryset.count(),
+            "results": serializer.data
+        })
 
 
 
 
+# 2. CONFIRM a single admission (POST with ID in URL)
+class ConfirmAdmissionView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, id):
+        admission = get_object_or_404(
+            Admission,
+            id=id,
+            is_deleted=False,
+            payments__isnull=False
+        )
+
+        admission.status = 'confirmed'  # ← Must match your model choice: 'confirmed'
+        admission.save(update_fields=['status'])
+
+        serializer = PaidAdmissionDetailSerializer(admission, context={'request': request})
+
+        return Response({
+            "message": "Admission confirmed successfully!",
+            "status": "confirmed",
+            "admission": serializer.data
+        }, status=status.HTTP_200_OK)
+        
+        
 
 
 
+#graphical representation of seleted courses in each admisssions
+from django.db.models import F, Count
 
 
+from calendar import month_name
 
+class CourseAdmissionStatsView(APIView):
+    permission_classes = [AllowAny]
 
+    def get(self, request):
+        today = date.today()
 
+        # Optional: allow ?month=11&year=2025
+        month = request.query_params.get('month')
+        year = request.query_params.get('year')
 
+        if month and year:
+            try:
+                month,int(month), int(year)
+                if not (1 <= month <= 12):
+                    raise ValueError
+            except ValueError:
+                return Response({"error": "Invalid month/year"}, status=400)
+        else:
+            month = today.month
+            year = today.year
 
+        # Get all courses
+        all_courses = course.objects.all().order_by('course_name')
+
+        # Count ONLY CONFIRMED admissions
+        admission_counts = Admission.objects.filter(
+            admission_date__month=month,
+            admission_date__year=year,
+            is_deleted=False,
+            status='confirmed'                    # ONLY THIS LINE CHANGED
+        ).values('course__course_name') \
+         .annotate(count=Count('id'))
+
+        count_dict = {item['course__course_name']: item['count'] for item in admission_counts}
+
+        courses_data = []
+        for crs in all_courses:
+            courses_data.append({
+                "course_name": crs.course_name,
+                "course_code": Admission.get_course_code(crs.course_name),
+                "count": count_dict.get(crs.course_name, 0)  # 0 if no confirmed admission
+            })
+
+        return Response({
+            "month": month,
+            "year": year,
+            "month_name": month_name[month],
+            "courses": courses_data
+        })
+
+# # ==========================
+
+# course, created = course.objects.get_or_create(
+#     course_name="Data Science",
+#     defaults={
+#         'course_fee': 45000.00,
+#         'duration_months': 6
+#     }
+# )
+# # Now `course` is a real instance, not the class
+
+# print(f"Course ready: {course.course_name} (created={created})")
+
+# # Clear old test data (optional, safe)
+# Enquiry.objects.filter(student_name__icontains="Test Student").delete()
+# Admission.objects.filter(enquiry__student_name__icontains="Test Student").delete()
+
+# # # Helper to create enquiry N months back
+# def create_past_enquiry(months_back, name_prefix="Test Student"):
+#     target_date = date.today() - timedelta(days=30*months_back)
+#     return Enquiry.objects.create(
+#         student_name=f"{name_prefix} {months_back}M Ago",
+#         phone1="9999999999",
+#         educational_qualification="B.Tech",
+#         enquiry_date=target_date,
+#         course_interested=course,
+#         heard_from='walk in'
+#     )
+
+# # # Helper to create admission from enquiry
+# def convert_to_admission(enquiry, days_after_enquiry=3):
+#     admission_date = enquiry.enquiry_date + timedelta(days=days_after_enquiry)
+#     return Admission.objects.create(
+#         enquiry=enquiry,
+#         course=course,
+#         admission_date=admission_date,
+#         status='confirmed'
+#     )
+
+# # # === CREATE DATA FOR LAST 3 MONTHS ===
+
+# # # November 2025 (previous month if today is Dec 2025)
+# for i in range(1, 21):  # 20 enquiries in Nov
+#     enquiry = create_past_enquiry(months_back=1, name_prefix=f"Nov Student {i}")
+#     if i <= 12:  # 12 out of 20 converted → 60% conversion
+#         convert_to_admission(enquiry, days_after_enquiry=2)
+
+# # # October 2025 (2 months back)
+# for i in range(1, 16):  # 15 enquiries
+#     enquiry = create_past_enquiry(months_back=2, name_prefix=f"Oct Student {i}")
+#     if i <= 6:  # 6 converted → 40%
+#         convert_to_admission(enquiry, days_after_enquiry=4)
+
+# # # September 2025 (3 months back)
+# for i in range(1, 25):
+#     enquiry = create_past_enquiry(months_back=3, name_prefix=f"Sep Student {i}")
+#     if i <= 18:  # 18 converted → 72%
+#         convert_to_admission(enquiry, days_after_enquiry=1)
+
+# print("Demo data created successfully for previous months!")
 
 
 
