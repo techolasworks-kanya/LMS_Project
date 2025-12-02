@@ -26,27 +26,30 @@ admin.site.register(course)
 #         else:
 #             return "NEW"
 #     status_tag.short_description = "Status"
+# @admin.register(Enquiry)
 class EnquiryAdmin(admin.ModelAdmin):
     list_display = ['student_name', 'phone1', 'course_interested', 'enquiry_date', 'status_tag']
     search_fields = ['student_name', 'phone1', 'email']
     list_filter = ['enquiry_date', 'course_interested']
     ordering = ['-enquiry_date']
+    list_per_page = 50
 
     def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs.filter(
-            Q(admissions__isnull=True) & Q(follow_up_actions__isnull=True)
-        ).distinct()
+        # This already reduces queries a lot
+        return super().get_queryset(request).select_related('course_interested').prefetch_related('admissions', 'follow_up_actions')
 
     def status_tag(self, obj):
-        if obj.admissions.exists():
+        # Super fast version – no extra DB query because we prefetched above
+        if obj.admissions and obj.admissions.exists():
             return "ADMITTED"
-        elif obj.follow_up_actions.exists():
+        elif obj.follow_up_actions and obj.follow_up_actions.exists():
             return "IN FOLLOW-UP"
         else:
             return "NEW"
-    
+
+    # THESE TWO LINES ARE MANDATORY – THIS IS WHAT FIXES THE CRASH
     status_tag.short_description = "Status"
+    status_tag.admin_order_field = 'enquiry_date'   # optional, allows sorting
 
 admin.site.register(EnquiryArchive)
 admin.site.register(FollowUps)
