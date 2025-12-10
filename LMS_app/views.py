@@ -80,10 +80,6 @@ def server_running(request):
 
 
 
-
-
-
-
 class UserLoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -255,6 +251,8 @@ class CourseDetailView(generics.RetrieveUpdateDestroyAPIView):
         return response
 
 from django.db.models import Exists, OuterRef
+
+
 class EnquiryListCreateView(generics.ListCreateAPIView):
     queryset = Enquiry.objects.all()
     permission_classes = [AllowAny]
@@ -310,10 +308,117 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
             ),
         }
 
+        if not serializer.is_valid():
+            return Response({
+                "status": "Enquiry creation failed",
+                "message": "Please correct the errors below",
+                "errors": serializer.errors 
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
         return Response({
             "status": "Enquiry created successfully",
             "data": response_data
         }, status=status.HTTP_201_CREATED)
+    
+
+#todays enquirires and count
+class TodayEnquiryListView(generics.ListAPIView):
+    permission_classes = [AllowAny]
+    serializer_class = EnquiryListSerializer
+
+    def get_queryset(self):
+        today = timezone.now().date()
+        today_count  = Enquiry.objects.filter(enquiry_date=today).count()
+        return Enquiry.objects.filter(
+            enquiry_date=today
+        ).select_related('course_interested').order_by('-id')
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        today_count  = Enquiry.objects.filter(enquiry_date=timezone.now().date()).count()
+        return Response({
+            "today_enquiries_count": today_count,
+            "data": serializer.data
+        })
+
+
+
+    # def get_queryset(self):
+    #     today = timezone.now().date()
+    #     return Enquiry.objects.filter(
+    #         enquiry_date=today
+    #     ).select_related('course_interested').order_by('-id')
+
+
+from django.db.models import OuterRef, Exists, Subquery
+
+
+
+class EnquiryStatusListView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        latest_admission = Admission.objects.filter(
+            enquiry=OuterRef('pk'),
+            is_deleted=False
+        ).order_by('-admission_date')
+
+        latest_followup = FollowUps.objects.filter(
+            enquiry=OuterRef('pk')
+        ).order_by('-followup_date')
+
+        from django.db.models import Q
+        
+        enquiries = Enquiry.objects.filter(is_archived=False).annotate(
+            has_admission=Exists(Admission.objects.filter(enquiry=OuterRef('pk'), is_deleted=False)),
+            admission_date=Subquery(latest_admission.values('admission_date')[:1]),
+
+            has_followup=Exists(FollowUps.objects.filter(enquiry=OuterRef('pk'))),
+            latest_followup_date=Subquery(latest_followup.values('followup_date')[:1]),
+        ).filter(
+            Q(has_followup=True) | Q(has_admission=True)
+        ).select_related('course_interested').order_by('-enquiry_date')
+
+        results = []
+        for enquiry in enquiries:
+            if enquiry.has_admission:
+                status_label = "admission"
+                conversion_date = enquiry.admission_date.strftime("%d-%m-%Y") if enquiry.admission_date else None
+            else:
+                status_label = "followup"
+                conversion_date = None  # HIDE date for follow-up only
+
+            results.append({
+                "id": enquiry.id,
+                "student_name": enquiry.student_name or "No Name",
+                "enquiry_date": enquiry.enquiry_date.strftime("%d-%m-%Y"),
+                "course_name": enquiry.course_interested.course_name if enquiry.course_interested else "Not Selected",
+                "heard_from": enquiry.get_heard_from_display() if enquiry.heard_from else "Not Specified",
+                "status": status_label,
+                "conversion_date": conversion_date,  # Only shown when status = admission
+            })
+
+        return Response(results)
+
+
+
+# class EnquiryExportExcel(APIView):
+#     permission_classes = [AllowAny]
+
+#     def get(self, request):
+#         enquiries = Enquiry.objects.filter(is_archived=False).select_related('course_interested').order_by('-enquiry_date')
+#         serializer = EnquiryListSerializer(enquiries, many=True)
+#         return Response(serializer.data)
+#     def post(self, request):
+#         headers_image = request.FILES.get('headers_image')
+#         enquiries = Enquiry.objects.filter(is_archived=False).select_related('course_interested').order_by('-enquiry_date')
+#         serializer = EnquiryListSerializer(enquiries, many=True)
+#         return Response(serializer.data)
+    
+
+
+
 class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Enquiry.objects.all()
     serializer_class = EnquiryCreateSerializer
@@ -335,6 +440,9 @@ class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
             {"status": "Enquiry deleted successfully."},
             status=status.HTTP_204_NO_CONTENT
         )
+
+
+
 
 
 # Follow-up List and Create
@@ -688,8 +796,56 @@ class AdmissionPaymentInfoView(APIView):
             "admission_fee": f"{admission_fee:.2f}"
         })
 
+#enquiry to followup , enquiry to admision converted count for each month show all monts count 
+class MonthlyEnquiryToAdmissionConversionView(APIView):
+    permission_classes = [AllowAny]
 
+    def get(self, request):
+        today = timezone.now()
+        current_year = today.year
+        current_month = today.month
 
+        results = []
+
+        for i in range(12):
+            # Calculate target month and year by going backwards
+            target_month = current_month - i
+            target_year = current_year
+
+            # Adjust year if month goes below 1
+            if target_month <= 0:
+                target_month += 12
+                target_year -= 1
+
+            # Count admissions from enquiries in that month/year
+            conversion_count = Admission.objects.filter(
+                enquiry__enquiry_date__year=target_year,
+                enquiry__enquiry_date__month=target_month
+            ).count()
+
+            #conversion rate also needed
+            total_enquiries = Enquiry.objects.filter(enquiry_date__year=target_year, enquiry_date__month=target_month).count()
+            if total_enquiries > 0:
+                conversion_rate = round((conversion_count / total_enquiries) * 100)
+            else:
+                conversion_rate = 0
+
+            results.append({
+                "month": calendar.month_name[target_month],
+                "short_month": calendar.month_abbr[target_month],
+                "year": target_year,
+                "month_year": f"{calendar.month_abbr[target_month]} {target_year}",
+                "conversion_count": conversion_count,
+                "conversion_rate": f"{conversion_rate}%"
+
+            })
+
+        results.reverse()  #
+
+        return Response({
+            "monthly_conversions": results
+        })
+    
 
 # NOT INTERESTED LEAD
 class NotInterestedLeadCreateView(generics.CreateAPIView):
@@ -787,9 +943,6 @@ class NotificationCreateView(generics.CreateAPIView):
             "status": "Notification created",
             "data": NotificationSerializer(notification).data
         }, status=status.HTTP_201_CREATED)
-
-
-
 
 
 class NotificationAllListView(generics.ListAPIView):
@@ -987,6 +1140,126 @@ class EnquirySourceStatsView(APIView):
 
         serializer = EnquirySourceStatsSerializer(data)
         return Response(serializer.data)
+
+from  io import BytesIO
+import datetime   
+from django.db.models import Q  
+class ExportEnquiryExcel(APIView):
+    permission_classes = [AllowAny] 
+
+    def post(self, request, *args, **kwargs):
+        header_image = request.FILES.get("header_image")  
+
+        latest_admission = Admission.objects.filter(
+            enquiry=OuterRef('pk'),
+            is_deleted=False
+        ).order_by('-admission_date')
+
+        latest_followup = FollowUps.objects.filter(
+            enquiry=OuterRef('pk')
+        ).order_by('-followup_date')
+
+        enquiries = Enquiry.objects.filter(is_archived=False).annotate(
+            has_admission=Exists(Admission.objects.filter(enquiry=OuterRef('pk'), is_deleted=False)),
+            admission_date=Subquery(latest_admission.values('admission_date')[:1]),
+            has_followup=Exists(FollowUps.objects.filter(enquiry=OuterRef('pk'))),
+            latest_followup_date=Subquery(latest_followup.values('followup_date')[:1]),
+        ).filter(
+            Q(has_followup=True) | Q(has_admission=True)
+        ).select_related('course_interested').order_by('-enquiry_date')
+
+        # === Create Excel Workbook ===
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Enquiry Status Report"
+
+        # Column settings
+        columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+        for col in columns:
+            ws.column_dimensions[col].width = 22
+
+        table_start_row = 5
+
+        # Optional Header Image
+        if header_image:
+            try:
+                img = XLImage(header_image)
+                img.width = 720  
+                img.height = 170
+                ws.row_dimensions[1].height = 60
+                ws.row_dimensions[2].height = 60
+                ws.row_dimensions[3].height = 60
+                ws.add_image(img, "A1")
+                table_start_row = 5
+            except Exception as e:
+                return Response(
+                    {"error": f"Invalid image file: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # Title
+        ws.cell(row=table_start_row - 1, column=1).value = "Enquiry Status Report (Follow-ups & Admissions)"
+        ws.cell(row=table_start_row - 1, column=1).font = ws.cell(row=table_start_row - 1, column=1).font.copy(
+            bold=True, size=14
+        )
+        ws.merge_cells(start_row=table_start_row - 1, start_column=1, end_row=table_start_row - 1, end_column=7)
+
+        # Header Row
+        headers = [
+            "Student Name",
+            "Enquiry Date",
+            "Course Interested",
+            "Heard From",
+            "Current Status",
+            "Conversion Date",  
+            "Phone"
+        ]
+        header_row = table_start_row
+        for idx, header in enumerate(headers, 1):
+            cell = ws.cell(row=header_row, column=idx, value=header)
+            cell.font = cell.font.copy(bold=True)
+            cell.fill = openpyxl.styles.PatternFill(start_color="DDDDDD", end_color="DDDDDD", fill_type="solid")
+
+        # Data Rows
+        data_row = header_row + 1
+        for enquiry in enquiries:
+            if enquiry.has_admission:
+                status = "Admission"
+                conversion_date = enquiry.admission_date.strftime("%d-%m-%Y") if enquiry.admission_date else "-"
+            else:
+                status = "Follow-up"
+                conversion_date = "-"  
+
+            ws.append([
+                enquiry.student_name or "No Name",
+                enquiry.enquiry_date.strftime("%d-%m-%Y"),
+                enquiry.course_interested.course_name if enquiry.course_interested else "Not Selected",
+                enquiry.get_heard_from_display() if hasattr(enquiry, 'get_heard_from_display') else enquiry.heard_from,
+                status,
+                conversion_date,
+                enquiry.phone1,
+            ])
+
+        # Footer: Total count
+        total = enquiries.count()
+        ws.append([])
+        ws.append([f"Total Records: {total}", "", "", "", "", "", "Generated on: " + datetime.datetime.now().strftime("%d-%m-%Y %I:%M %p")])
+
+        # === Save to memory and return file ===
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        response = HttpResponse(
+            content=output.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        filename = f"enquiry_status_report_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+        return response
+
+
 
 
 
@@ -1322,7 +1595,6 @@ class PaymentCreateView(APIView):
 
             course_code = Admission.get_course_code(course_name)
 
-            # Count only admissions from the SAME month/year that already have a code
             # This prevents duplicates even if multiple payments happen at once
             base_count = Admission.objects.filter(
                 admission_date__year=now.year,
@@ -1339,57 +1611,13 @@ class PaymentCreateView(APIView):
         admission.fee_paid += amount_paid_now
         admission.save(update_fields=['fee_paid'])
 
-        # def post(self, request, admission_id=None):
-        #     admission = get_object_or_404(Admission, id=admission_id, is_deleted=False)
-        #     amount_paid_now = admission.admission_fee or Decimal('500.00')
-
-        #     serializer = PaymentCreateSerializer(data=request.data)
-        #     if not serializer.is_valid():
-        #         return Response(serializer.errors, status=400)
-
-        #     # Create payment
-        #     payment = serializer.save(
-        #         admission=admission,
-        #         amount_paid_now=amount_paid_now
-        #     )
-
-            
-        #     if not admission.student_code:
-        #         now = timezone.now()
-        #         year_month = now.strftime("%b%Y").upper()  # NOV2025, DEC2025
-
-        #         # Get course name safely
-        #         if admission.course:
-        #             course_name = admission.course.course_name
-        #         elif admission.enquiry and admission.enquiry.course_interested:
-        #             course_name = admission.enquiry.course_interested.course_name
-        #         else:
-        #             course_name = "Unknown Course"
-
-        #         course_code = Admission.get_course_code(course_name)
-
-        #         # Count how many admissions this month already have student_code
-        #         # This ensures sequence restarts every month
-        #         sequence = Admission.objects.filter(
-        #             admission_date__year=now.year,
-        #             admission_date__month=now.month,
-        #             # student_code__isnull=False
-        #         ).count() + 1
-
-        #         # Format: TS-EKM-GST-PFS-NOV2025-001
-        #         admission.student_code = f"TS-EKM-GST-{course_code}-{year_month}-{sequence:04d}"
-        #         admission.save(update_fields=['student_code'])
-
-        #     # Update total fee_paid in Admission
-        #     admission.fee_paid += amount_paid_now
-        #     admission.save(update_fields=['fee_paid'])
-
-            # Final Response – Exactly What You Want
+       
         return Response({
             "payment_id": payment.id,
             "student_name": admission.enquiry.student_name if admission.enquiry else "Unknown",
             "receipt_number": payment.receipt_number,
             "student_code": admission.student_code,
+            "payment_structure": payment.payment_structure,
             "payment_mode": payment.get_payment_mode_display(),
             "transaction_id": payment.transaction_id or "N/A",
             "course_name": admission.course.course_name if admission.course else "Not Selected",

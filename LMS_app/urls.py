@@ -27,7 +27,9 @@ urlpatterns = [
  #enquiry API endpoints
     path('api/enquiries', views.EnquiryListCreateView.as_view(), name='enquiry-create-list'),
     path('api/enquiries/<int:pk>', views.EnquiryDetailView.as_view(), name='enquiry-retrieve-update-destroy'),
-
+    path('api/today-enquiries', views.TodayEnquiryListView.as_view(), name='today-enquiries'),
+    path('api/enquiry-status-counts', views.EnquiryStatusListView.as_view(), name='enquiry-status-counts'),
+    path('api/enquiries/export-excel', views.ExportEnquiryExcel.as_view(), name='export-enquiry-excel'),
 
 #folloup actions API endpoints
     path('api/followups', views.FollowUpListCreateView.as_view(), name='followup-list-create'),
@@ -42,6 +44,7 @@ urlpatterns = [
     path('api/admissions/delete-multiple', views.AdmissionDeleteView.as_view()),
     path('api/admissions/create_admissions', views.AdmissionUpdateView.as_view(), name='admission-manual-create'),
     path('api/admission_payment_info/<int:admission_id>', views.AdmissionPaymentInfoView.as_view(), name='payment-info'),
+    path('api/monthly-enquiry-to-admission-converted-count', views.MonthlyEnquiryToAdmissionConversionView.as_view()),
 
 #not interested leads API endpoints
     path('api/not-interested', views.NotInterestedLeadListView.as_view(), name='not-interested-list'),

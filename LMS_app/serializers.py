@@ -36,7 +36,7 @@ class CourseListSerializer(serializers.ModelSerializer):
         model = course
         fields = ['course_name', 'duration', 'course_fee']
         
-
+from rest_framework.exceptions import ValidationError  
 class EnquiryCreateSerializer(serializers.ModelSerializer):
     course_name = serializers.CharField(
         source='course_interested.course_name',
@@ -53,34 +53,218 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
             'heard_from': {'required': True},
         }
 
-    # ──────────────────────────────────────────────────────────────
-    # 1. DUPLICATE CHECK (phone1 or email)
-    #──────────────────────────────────────────────────────────────
-    def validate(self, attrs):
-        phone1 = attrs.get('phone1')
-        email = attrs.get('email')
-
-        # Treat empty strings as None (same as your old cleaning logic)
-        if email in ['', 'null', 'undefined', None]:
-            email = None
-
-        # Only check non-archived enquiries
-        qs = Enquiry.objects.filter(is_archived=False)
-
-        if phone1 and qs.filter(phone1=phone1).exists():
-            raise serializers.ValidationError({
-                "phone1": f"An enquiry with phone number '{phone1}' already exists."
-            })
-
-        if email and qs.filter(email__iexact=email).exists():
-            raise serializers.ValidationError({
-                "email": f"An enquiry with email '{email}' already exists."
-            })
-
-        return attrs
-
+  
+        
+    
     def to_internal_value(self, data):
         data = dict(data)
+
+        student_name = data.get('student_name', '')
+        if isinstance(student_name, list):
+            student_name = student_name[0] if student_name else ''
+        student_name = str(student_name).strip()
+
+        if len(student_name) > 55:
+            raise serializers.ValidationError({
+                "message": "Student name is too long. Maximum 55 characters allowed."
+            })
+
+        data['student_name'] = student_name
+
+        # === Guardian name ===
+        guardian_name = data.get('guardian_name', '')
+        if isinstance(guardian_name, list):
+            guardian_name = guardian_name[0] if guardian_name else ''
+        guardian_name = str(guardian_name).strip()
+
+        if len(guardian_name) > 40:
+            raise serializers.ValidationError({
+                "message": "Guardian name is too long. Maximum 40 characters allowed"
+            })
+        
+        #=== Guardian occupation ===
+
+        guardian_occupation = data.get('occupation', '')
+        if isinstance(guardian_occupation, list):
+            guardian_occupation = guardian_occupation[0] if guardian_occupation else ''
+        guardian_occupation = str(guardian_occupation).strip()
+        if len(guardian_occupation) < 2 and guardian_occupation != '':
+            raise serializers.ValidationError({
+                "message": "Guardian occupation is too short. Please provide a valid occupation."
+            })
+        if len(guardian_occupation) > 50:
+            raise serializers.ValidationError({
+                "message": "Guardian occupation is too long. Maximum 50 characters allowed."
+            })
+
+        
+        
+        # === Email & Phone Duplicate Check (Add this here!) ===
+        phone1 = data.get('phone1')
+        if isinstance(phone1, list):
+            phone1 = phone1[0] if phone1 else None
+        phone1 = str(phone1).strip() if phone1 else None
+
+        email = data.get('email')
+        if isinstance(email, list):
+            email = email[0] if email else None
+        email = str(email).strip().lower() if email else None
+
+        if phone1 or email:
+            qs = Enquiry.objects.filter(is_archived=False)
+
+            if phone1 and qs.filter(phone1=phone1).exists():
+                raise serializers.ValidationError({
+                    "message": "An enquiry with this phone number already exists."
+                })
+
+            if email and qs.filter(email__iexact=email).exists():
+                raise serializers.ValidationError({
+                    "message": "An enquiry with this email already exists."
+                })
+            email = data.get('email')
+        if isinstance(email, list):
+            email = email[0] if email else None
+        email = str(email).strip().lower() if email else None
+
+        if email:
+            if len(email) > 100:
+                raise serializers.ValidationError({
+                    "message": "Email address is too long. Maximum 100 characters allowed."
+                })
+            if len(email) < 5:
+                raise serializers.ValidationError({
+                    "message": "Email address is too short. Please provide a valid email."
+                })
+        else:
+            email = None
+        data['email'] = email
+            
+            
+
+        #=====address minimum length check====There is no any Max character limit in the address field. and There is no any Max character limit in the address field.
+        address = data.get('address', '')
+        if isinstance(address, list):
+            address = address[0] if address else ''
+        address = str(address).strip()
+
+        if address:
+            if len(address) < 15:
+                raise serializers.ValidationError({
+                    "message": "Address is too short. Please provide complete address (minimum 15 characters)."
+                })
+            if len(address) > 300:
+                raise serializers.ValidationError({
+                    "message": "Address is too long. Maximum 300 characters allowed.()"
+                })
+        else:
+            address = None
+
+        data['address'] = address
+
+        #====-===========qualification length check========
+        # === Educational Qualification – Min 4, Max 100 chars ===
+        qualification = data.get('educational_qualification', '')
+        if isinstance(qualification, list):
+            qualification = qualification[0] if qualification else ''
+        qualification = str(qualification).strip()
+
+        if not qualification:
+            raise serializers.ValidationError({
+                "message": "Educational qualification is required."
+            })
+
+        qual_len = len(qualification)
+
+        if qual_len < 3:
+            raise serializers.ValidationError({
+                "message": "Educational qualification is too short. Please enter full qualification. Minimum 4 characters."
+            })
+
+        if qual_len > 100:
+            raise serializers.ValidationError({
+                "message": "Educational qualification is too long. Maximum 100 characters allowed."
+            })
+
+        data['educational_qualification'] = qualification
+
+        #=====university/college length check========
+        university = data.get('university_college', '')
+        if isinstance(university, list):
+            university = university[0] if university else ''
+        university = str(university).strip()
+        if university:
+            if len(university) < 3:
+                raise serializers.ValidationError({
+                    "message": "University/College name is too short. Please enter full name. Minimum 3 characters."
+                })
+            if len(university) > 200:
+                raise serializers.ValidationError({
+                    "message": "University/College name is too long. Maximum 200 characters allowed."
+                })
+            else:
+                university = None
+
+    #year of passing need 4  numners example - 2024, 1999
+        year_of_passing = data.get('year_of_passing', '')
+
+        if isinstance(year_of_passing, list):
+            year_of_passing = year_of_passing[0] if year_of_passing else ''
+        year_of_passing = str(year_of_passing).strip()
+
+        if year_of_passing:
+            if len(year_of_passing) != 4:
+                raise serializers.ValidationError({
+                    "message": "Year of passing must be a 4-digit year (e.g., 2024)."
+                })
+
+        if year_of_passing:
+            if not year_of_passing.isdigit():
+                raise serializers.ValidationError({
+                    "message": "Year of passing must be a valid year (e.g., 2024)."
+                })
+            year_int = int(year_of_passing)
+            current_year = dt_module.datetime.now().year
+
+            # if year_int < 1900 or year_int > current_year + 5:
+            #     raise serializers.ValidationError({
+            #         "message": f"Year of passing must be between 1900 and {current_year}."
+            #     })
+            if year_int > current_year:
+                raise serializers.ValidationError({
+                    "message": f"Year of passing must be a valid year. "
+                })
+
+            if year_int < 1930:
+                raise serializers.ValidationError({
+                    "message": "Year of passing must be 1930 or later."
+                })
+
+            data['year_of_passing'] = year_int
+        else:
+            data['year_of_passing'] = None
+
+#There is no warning message under the field when the user input 200 in the percentage field.Valid percentage should be 0-100
+        # === Percentage ===
+        percentage = data.get('percentage', '')
+        if isinstance(percentage, list):
+            percentage = percentage[0] if percentage else ''
+        percentage = str(percentage).strip()
+        if percentage:
+            try:
+                perc_float = float(percentage)
+                if perc_float < 0 or perc_float > 100:
+                    raise serializers.ValidationError({
+                        "message": "Percentage must be between 0 and 100."
+                    })
+                data['percentage'] = Decimal(str(perc_float))
+            except ValueError:
+                raise serializers.ValidationError({
+                    "message": "Percentage must be a valid number."
+                })
+
+    
+        # === Course interested ===
         raw_course = data.get('course_interested')
 
         if isinstance(raw_course, list):
@@ -141,7 +325,7 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
         
 
         return data
-    
+
 class EnquiryListSerializer(serializers.ModelSerializer):
     course_name = serializers.CharField(
         source='course_interested.course_name',
@@ -162,7 +346,26 @@ class EnquiryListSerializer(serializers.ModelSerializer):
             return obj.enquiry_date.strftime('%d-%m-%Y')
         return None
 
-    
+   
+class TodaysEnequirySerializer(serializers.ModelSerializer):
+    enquiry_date = serializers.DateField(format='%d-%m-%Y', read_only=True)
+    course_name = serializers.CharField(
+        source='course_interested.course_name',
+        read_only=True,
+        allow_null=True
+    )
+
+    class Meta:
+        model = Enquiry
+        fields = [
+            'id', 'student_name', 'enquiry_date',
+            'course_name', 'heard_from'
+        ]
+
+#Admission Serializer
+
+
+
 class CreateUserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
         write_only=True,
@@ -248,7 +451,9 @@ class FollowUpListSerializer(serializers.ModelSerializer):
     #             "added_on": remark.added_on.strftime('%d/%m/%Y, %I:%M %p')
     #         }
     #     return None
-# serializers.py
+
+
+
 class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
     course_interested = serializers.CharField(
         required=False, allow_blank=True, write_only=True
@@ -356,7 +561,7 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
-#Admission Serializer
+#show data ansd total count of today's enquiries
 
 class AdmissionListSerializer(serializers.ModelSerializer):
     # ----- Safe fields that come from Enquiry (can be None) -----
@@ -386,7 +591,7 @@ class AdmissionListSerializer(serializers.ModelSerializer):
     educational_certificate = serializers.SerializerMethodField()
     aadhaar_copy = serializers.SerializerMethodField()
     class_timing = serializers.CharField(read_only=True)
-    payment_structure = serializers.CharField(read_only=True)
+    # payment_structure = serializers.CharField(read_only=True)
     interested_in_nactet = serializers.CharField(source='get_interested_in_nactet_display')
     nactet_fee = serializers.DecimalField(max_digits=8, decimal_places=2)
     admission_fee = serializers.DecimalField(max_digits=8, decimal_places=2)
@@ -402,7 +607,9 @@ class AdmissionListSerializer(serializers.ModelSerializer):
             'university', 'flexible_timings',''
 #------------------- New Fields -------------------
             'student_photo', 'aadhaar_number', 'educational_certificate',
-             'class_timing', 'payment_structure','interested_in_nactet','nactet_fee','admission_fee','aadhaar_copy',
+             'class_timing',
+            #    'payment_structure',
+               'interested_in_nactet','nactet_fee','admission_fee','aadhaar_copy',
             #  'class_schedule'
         ]
 
@@ -517,7 +724,6 @@ class AdmissionListSerializer(serializers.ModelSerializer):
             return latest_followup.guardian_occupation
         return obj.enquiry.occupation or ""
     
- 
 
 class AdmissionCreateSerializer(serializers.ModelSerializer):
     enquiry_ids = serializers.ListField(
@@ -869,7 +1075,7 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Payment
-        fields = ['payment_mode', 'transaction_id', 'remarks','receipt_type']
+        fields = ['payment_mode', 'transaction_id', 'remarks','receipt_type', 'payment_structure']
 
     def validate(self, data):
         mode = data.get('payment_mode')
@@ -902,6 +1108,7 @@ class PaidAdmissionListSerializer(serializers.ModelSerializer):
     phone = serializers.CharField(source='enquiry.phone1', read_only=True)
     course_name = serializers.CharField(source='course.course_name', read_only=True, default="Not Assigned")
     admission_fee_paid = serializers.SerializerMethodField()
+    
 
     class Meta:
         model = Admission
@@ -948,6 +1155,7 @@ class PaidAdmissionDetailSerializer(serializers.ModelSerializer):
     admission_fee_amount_paid = serializers.SerializerMethodField()  # Actual amount paid toward admission fee
     payment_mode = serializers.SerializerMethodField()
     transaction_id = serializers.SerializerMethodField()
+    payment_strecture = serializers.SerializerMethodField()
 
     # NACTET
     interested_in_nactet = serializers.CharField(source='get_interested_in_nactet_display', read_only=True)
@@ -969,7 +1177,7 @@ class PaidAdmissionDetailSerializer(serializers.ModelSerializer):
             'interested_in_nactet', 'nactet_fee',
             'student_photo', 'aadhaar_copy', 'educational_certificate',
             'class_schedule', 'class_timing', 
-            # 'payment_structure',
+            'payment_structure',
             'aadhaar_number','payment_mode','year_of_passing','percentage','university_college','transaction_id'
         ]
 
@@ -1063,7 +1271,7 @@ class PaidAdmissionUpdateSerializer(serializers.ModelSerializer):
 
     class_schedule = serializers.ChoiceField(choices=Admission.SCHEDULE_CHOICES, required=False, allow_null=True)
     class_timing = serializers.CharField(max_length=20, required=False, allow_blank=True, allow_null=True)
-    payment_structure = serializers.ChoiceField(choices=Admission.PAYMENT_STRUCTURE_CHOICES, required=False, allow_null=True)
+    payment_structure = serializers.ChoiceField(choices=Payment.PAYMENT_STRUCTURE_CHOICES, required=False, allow_null=True)
     interested_in_nactet = serializers.ChoiceField(choices=Admission.NACTIT_CHOICES, required=False)
 
     # File fields
@@ -1081,7 +1289,8 @@ class PaidAdmissionUpdateSerializer(serializers.ModelSerializer):
             'student_name', 'date_of_birth', 'guardian_name', 'phone1', 'phone2',
             'email', 'address', 'gender', 'educational_qualification',
             'university_college', 'percentage', 'year_of_passing',
-            'course', 'class_schedule', 'class_timing', 'payment_structure',
+            'course', 'class_schedule', 'class_timing',
+              'payment_structure',
             'interested_in_nactet', 'aadhaar_number',
             'student_photo', 'aadhaar_copy', 'educational_certificate',
         ]

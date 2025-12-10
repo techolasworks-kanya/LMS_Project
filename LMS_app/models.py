@@ -40,9 +40,12 @@ class course(models.Model):
     def __str__(self):
         return self.course_name
 
+from django.core.validators import MinLengthValidator
+
 
 class Enquiry(models.Model):
-    student_name = models.CharField(max_length=100)
+    student_name = models.CharField(max_length=100,null=True, blank=True)
+
     date_of_birth = models.DateField(null=True, blank=True)
     guardian_name = models.CharField(max_length=100,null=True, blank=True)
     occupation = models.CharField(max_length=100,blank=True, null=True)
@@ -82,8 +85,10 @@ class Enquiry(models.Model):
     flexible_timings = models.CharField(max_length=10, choices=FLEXIBLE_TIMINGS_CHOICES, blank=True, null=True)
     is_archived = models.BooleanField(default=False, db_index=True)
 
+    # def __str__(self):
+    #     return self.student_name
     def __str__(self):
-        return self.student_name
+        return self.student_name or f"Enquiry #{self.pk or 'NEW'}"
 
 
 
@@ -238,14 +243,7 @@ class Admission(models.Model):
         ('2:00 to 4:00', '2:00 PM - 4:00 PM'),
     ]
     class_timing = models.CharField(max_length=20,null=True,blank=True,help_text="Select timing based on schedule type")
-    PAYMENT_STRUCTURE_CHOICES = [
-        ('full', 'Full Payment'),
-        ('installments', 'Installments'),
-        ('emi', 'EMI'),
-    ]
-
-
-    payment_structure = models.CharField(max_length=20,choices=PAYMENT_STRUCTURE_CHOICES,null=True,blank=True,help_text="How student will pay fees")
+    
     NACTIT_CHOICES = [
         ('yes', 'yes'),
         ('no', 'no'),
@@ -324,6 +322,13 @@ class Payment(models.Model):
     ]
 
     admission = models.ForeignKey(Admission, on_delete=models.CASCADE, related_name='payments')
+    PAYMENT_STRUCTURE_CHOICES = [
+        ('full payment', 'full payment'),
+        ('installments', 'installments'),
+       
+    ]
+
+    payment_structure = models.CharField(max_length=20,choices=PAYMENT_STRUCTURE_CHOICES,null=True,blank=True,help_text="How student will pay fees")
     total_fee_amount = models.DecimalField(max_digits=10, decimal_places=2)
     payment_mode = models.CharField(max_length=20, choices=PAYMENT_MODE_CHOICES)
     transaction_id = models.CharField(max_length=100, blank=True, null=True)
@@ -346,7 +351,6 @@ class Payment(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.receipt_number:
-            # REC-20251119001
             date_str = timezone.now().strftime('%Y%m%d')
             count = Payment.objects.filter(payment_date__date=timezone.now().date()).count() + 1
             self.receipt_number = f"REC-{date_str}{count:03d}"
