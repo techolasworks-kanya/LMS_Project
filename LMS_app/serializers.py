@@ -1156,7 +1156,7 @@ class PaidAdmissionDetailSerializer(serializers.ModelSerializer):
     admission_fee_amount_paid = serializers.SerializerMethodField()  # Actual amount paid toward admission fee
     payment_mode = serializers.SerializerMethodField()
     transaction_id = serializers.SerializerMethodField()
-    payment_strecture = serializers.SerializerMethodField()
+    payment_structure = serializers.SerializerMethodField()
 
     # NACTET
     interested_in_nactet = serializers.CharField(source='get_interested_in_nactet_display', read_only=True)
