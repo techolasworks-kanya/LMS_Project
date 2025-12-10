@@ -51,6 +51,7 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
             'phone1': {'required': True},
             'educational_qualification': {'required': True},
             'heard_from': {'required': True},
+            'course_interested': {'required': True},
         }
 
   
