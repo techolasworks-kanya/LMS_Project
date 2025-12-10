@@ -1235,6 +1235,11 @@ class PaidAdmissionDetailSerializer(serializers.ModelSerializer):
         if latest_payment:
             return latest_payment.transaction_id
         return None
+    def get_payment_structure(self, obj):
+        latest_payment = Payment.objects.filter(admission=obj).order_by('-payment_date').first()
+        if latest_payment:
+            return latest_payment.get_payment_structure_display()
+        return None
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
