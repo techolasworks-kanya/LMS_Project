@@ -91,7 +91,6 @@ class Enquiry(models.Model):
         return self.student_name or f"Enquiry #{self.pk or 'NEW'}"
 
 
-
 class EnquiryArchive(models.Model):
     # NO ForeignKey to Enquiry → completely independent!
     student_name = models.CharField(max_length=100,null=True, blank=True)

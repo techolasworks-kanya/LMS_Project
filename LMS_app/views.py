@@ -201,8 +201,6 @@ class CreateUserAPIView(generics.GenericAPIView):
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
-
 #certfication
 class CertficationListCreateView(generics.ListCreateAPIView):
     queryset = certfication.objects.all()
@@ -322,7 +320,7 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
         }, status=status.HTTP_201_CREATED)
     
 
-#todays enquirires and count
+#todays enquirires and count  - if zero enqur
 class TodayEnquiryListView(generics.ListAPIView):
     permission_classes = [AllowAny]
     serializer_class = EnquiryListSerializer
@@ -403,22 +401,6 @@ class EnquiryStatusListView(APIView):
 
 
 
-# class EnquiryExportExcel(APIView):
-#     permission_classes = [AllowAny]
-
-#     def get(self, request):
-#         enquiries = Enquiry.objects.filter(is_archived=False).select_related('course_interested').order_by('-enquiry_date')
-#         serializer = EnquiryListSerializer(enquiries, many=True)
-#         return Response(serializer.data)
-#     def post(self, request):
-#         headers_image = request.FILES.get('headers_image')
-#         enquiries = Enquiry.objects.filter(is_archived=False).select_related('course_interested').order_by('-enquiry_date')
-#         serializer = EnquiryListSerializer(enquiries, many=True)
-#         return Response(serializer.data)
-    
-
-
-
 class EnquiryDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Enquiry.objects.all()
     serializer_class = EnquiryCreateSerializer
@@ -451,7 +433,9 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
         if self.request.method == 'GET':
             return FollowUps.objects.select_related(
                 'enquiry', 'enquiry__course_interested'
-            ).prefetch_related('remarks').order_by('-id')
+            ).prefetch_related('remarks').exclude(
+            enquiry__admissions__status='confirmed'
+        ).order_by('-id')
         return super().get_queryset()
 
     
@@ -465,7 +449,6 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
         enquiry_ids = serializer.validated_data.pop('enquiry_ids')
         remarks = serializer.validated_data.pop('remarks', [])
 
-        # Validate enquiries exist and not already converted
         enquiries = Enquiry.objects.filter(id__in=enquiry_ids,follow_up_actions__isnull=True)
         found_ids = enquiries.values_list('id', flat=True)
         missing = set(enquiry_ids) - set(found_ids)
@@ -1258,9 +1241,6 @@ class ExportEnquiryExcel(APIView):
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
 
         return response
-
-
-
 
 
 import openpyxl

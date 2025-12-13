@@ -1,4 +1,5 @@
 from decimal import Decimal
+import re
 from rest_framework import serializers
 from .models import *
 from django.utils import timezone
@@ -38,10 +39,7 @@ class CourseListSerializer(serializers.ModelSerializer):
         
 from rest_framework.exceptions import ValidationError  
 class EnquiryCreateSerializer(serializers.ModelSerializer):
-    course_name = serializers.CharField(
-        source='course_interested.course_name',
-        read_only=True
-    )
+    course_name = serializers.CharField(source='course_interested.course_name',read_only=True)
 
     class Meta:
         model = Enquiry
@@ -106,6 +104,8 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
             phone1 = phone1[0] if phone1 else None
         phone1 = str(phone1).strip() if phone1 else None
 
+
+
         email = data.get('email')
         if isinstance(email, list):
             email = email[0] if email else None
@@ -118,7 +118,24 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     "message": "An enquiry with this phone number already exists."
                 })
+            if len(phone1) < 9:
+                raise serializers.ValidationError({
+                    "message": "Phone number is too short. Please provide a valid phone number."
+                })
+            if len(phone1) > 16:
+                raise serializers.ValidationError({
+                    "message": "Phone number is too long. Maximum 15 characters allowed."
+                })
+            #no special charactors allow in the phone number field
+            if phone1 and not phone1.replace('+', '').replace('-', '').replace(' ', '').isdigit():
+                raise serializers.ValidationError({
+                    "message": "Please provide a valid phone number."   
+                })
+            data['phone1'] = phone1
 
+
+
+           
             if email and qs.filter(email__iexact=email).exists():
                 raise serializers.ValidationError({
                     "message": "An enquiry with this email already exists."
@@ -140,8 +157,27 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
         else:
             email = None
         data['email'] = email
-            
-            
+#phone2 length check
+        phone2 = data.get('phone2', '')
+        if isinstance(phone2, list):
+            phone2 = phone2[0] if phone2 else ''
+        phone2 = str(phone2).strip()
+        if phone2:
+            if len(phone2) < 9:
+                raise serializers.ValidationError({
+                    "message": "Secondary phone number is too short. Please provide a valid phone number."
+                })
+            if len(phone2) > 16:
+                raise serializers.ValidationError({
+                    "message": "Secondary phone number is too long. Maximum 15 characters allowed."
+                })
+            #no special charactors allow in the phone number field
+            if not phone2.replace('+', '').replace('-', '').replace(' ', '').isdigit():
+                raise serializers.ValidationError({
+                    "message": "Please provide a valid secondary phone number."   
+                })
+
+
 
         #=====address minimum length check====There is no any Max character limit in the address field. and There is no any Max character limit in the address field.
         address = data.get('address', '')
@@ -164,7 +200,6 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
         data['address'] = address
 
         #====-===========qualification length check========
-        # === Educational Qualification – Min 4, Max 100 chars ===
         qualification = data.get('educational_qualification', '')
         if isinstance(qualification, list):
             qualification = qualification[0] if qualification else ''
@@ -206,7 +241,6 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
             else:
                 university = None
 
-    #year of passing need 4  numners example - 2024, 1999
         year_of_passing = data.get('year_of_passing', '')
 
         if isinstance(year_of_passing, list):
@@ -227,10 +261,7 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
             year_int = int(year_of_passing)
             current_year = dt_module.datetime.now().year
 
-            # if year_int < 1900 or year_int > current_year + 5:
-            #     raise serializers.ValidationError({
-            #         "message": f"Year of passing must be between 1900 and {current_year}."
-            #     })
+         
             if year_int > current_year:
                 raise serializers.ValidationError({
                     "message": f"Year of passing must be a valid year. "
@@ -245,7 +276,6 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
         else:
             data['year_of_passing'] = None
 
-#There is no warning message under the field when the user input 200 in the percentage field.Valid percentage should be 0-100
         # === Percentage ===
         percentage = data.get('percentage', '')
         if isinstance(percentage, list):
@@ -432,6 +462,7 @@ class FollowUpListSerializer(serializers.ModelSerializer):
             'id', 'followup_date', 'status', 'next_followup_date',
             'enquiry_data', 'latest_remark',
         ]
+        
 
     def get_enquiry_data(self, obj):
         e = Enquiry.objects.select_related('course_interested').get(pk=obj.enquiry.pk)
@@ -443,15 +474,7 @@ class FollowUpListSerializer(serializers.ModelSerializer):
             "course_interested": e.course_interested.course_name if e.course_interested else None,
             "enquiry_date": e.enquiry_date.strftime('%d-%m-%Y')
         }
-
-    # def get_latest_remark(self, obj):
-    #     remark = obj.remarks.first()
-    #     if remark:
-    #         return {
-    #             "content": remark.content,
-    #             "added_on": remark.added_on.strftime('%d/%m/%Y, %I:%M %p')
-    #         }
-    #     return None
+    
 
 
 
@@ -459,6 +482,9 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
     course_interested = serializers.CharField(
         required=False, allow_blank=True, write_only=True
     )
+    email = serializers.CharField(max_length=150,allow_blank=True,required=False,)
+    
+
    
 
     class Meta:
@@ -475,15 +501,39 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
         if raw_course_name is not None:
             raw_course_name = raw_course_name.strip()
             if raw_course_name:
-                # Find or create course
                 course_obj, _ = course.objects.get_or_create(course_name=raw_course_name)
                 validated_data['course_interested'] = course_obj
             else:
                 validated_data['course_interested'] = None
+       
 
         return super().update(instance, validated_data)
-
     
+    # def validate(self, data):
+      
+    #     email = data.get('email')
+
+    #     if email:  # Only validate if email is provided and not empty after strip
+    #         email = email.strip()
+    #         if len(email) < 5:
+    #             raise serializers.ValidationError({
+    #                 "message": "Email address is too short. Please provide a valid email."
+    #             })
+    #         if len(email) > 150:
+    #             raise serializers.ValidationError({
+    #                 "message": "Email address is too long. Maximum 150 characters allowed."
+    #             })
+    #         if not re.match(r"^[\w\.\+\-']+@[\w\-\.]+\.[a-zA-Z]{2,}$", email):
+    #             raise serializers.ValidationError({
+    #                 "message": "Please enter a valid email address (e.g. name@example.com)."
+    #             })
+
+
+    #         data['email'] = email
+
+    #     return data
+    
+
 class FollowUpDetailSerializer(serializers.ModelSerializer):
     # WRITE-ONLY INPUT FIELDS
     remarks = serializers.ListField(
@@ -491,12 +541,7 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
-    enquiry_ids = serializers.ListField(
-        child=serializers.IntegerField(),
-        write_only=True,
-        required=True,
-        help_text="List of enquiry IDs to convert to follow-ups"
-    )
+    enquiry_ids = serializers.ListField(child=serializers.IntegerField(),write_only=True,required=True,help_text="List of enquiry IDs to convert to follow-ups")
     enquiry = EnquiryNestedUpdateSerializer(write_only=True, required=False)
 
     # READ-ONLY OUTPUT
@@ -507,6 +552,7 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
         allow_null=True,
         required=False
     )
+    
     enquiry_data = serializers.SerializerMethodField()
     remarks_history = FollowUpRemarkSerializer(many=True, read_only=True, source='remarks')
 
@@ -517,6 +563,7 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
             'enquiry_data', 'remarks_history',
             'enquiry_ids', 'remarks', 'enquiry'
         ]
+
 
     
     def get_enquiry_data(self, obj):
@@ -562,7 +609,6 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
-#show data ansd total count of today's enquiries
 
 class AdmissionListSerializer(serializers.ModelSerializer):
     # ----- Safe fields that come from Enquiry (can be None) -----
@@ -592,7 +638,6 @@ class AdmissionListSerializer(serializers.ModelSerializer):
     educational_certificate = serializers.SerializerMethodField()
     aadhaar_copy = serializers.SerializerMethodField()
     class_timing = serializers.CharField(read_only=True)
-    # payment_structure = serializers.CharField(read_only=True)
     interested_in_nactet = serializers.CharField(source='get_interested_in_nactet_display')
     nactet_fee = serializers.DecimalField(max_digits=8, decimal_places=2)
     admission_fee = serializers.DecimalField(max_digits=8, decimal_places=2)
@@ -726,6 +771,7 @@ class AdmissionListSerializer(serializers.ModelSerializer):
         return obj.enquiry.occupation or ""
     
 
+
 class AdmissionCreateSerializer(serializers.ModelSerializer):
     enquiry_ids = serializers.ListField(
         child=serializers.IntegerField(),
@@ -758,6 +804,7 @@ class AdmissionCreateSerializer(serializers.ModelSerializer):
                 return obj.enquiry.date_of_birth.strftime('%d-%m-%Y')
             return None    
    
+
 from django.shortcuts import get_object_or_404
 
 class AdmissionUpdateSerializer(serializers.ModelSerializer):
@@ -1006,7 +1053,7 @@ class NotInterestedLeadListSerializer(serializers.ModelSerializer):
            
         ]
 
-
+ 
 
 
 class NotificationSerializer(serializers.ModelSerializer):

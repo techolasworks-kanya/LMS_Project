@@ -36,13 +36,13 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'django.contrib.staticfiles','LMS_app','corsheaders', 
+    'django.contrib.staticfiles','LMS_app','corsheaders','finance_app',
     'rest_framework','rest_framework_simplejwt'
 ]
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'LMS.auth_backend.CookieJWTAuthentication', 
+    'DEFAULT_AUTHENTICATION_CLASSES': [ 'LMS.auth_backend.CookieJWTAuthentication', 
+
     
     ],
 
@@ -53,6 +53,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.AllowAny',
     ),
+    'EXCEPTION_HANDLER': 'LMS.utils.exceptions.custom_exception_handler',
 }
 
 
@@ -188,8 +189,26 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
 STATIC_URL = 'static/'
+BASE_DIR = Path(__file__).resolve().parent.parent
 
+MEDIA_URL = '/media/'  # URL prefix for media files
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
