@@ -478,6 +478,27 @@ class FollowUpListSerializer(serializers.ModelSerializer):
 
 
 
+import re
+from datetime import date
+# Emoji Detection Helper
+EMOJI_PATTERN = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"
+    "\U0001F300-\U0001F5FF"
+    "\U0001F680-\U0001F6FF"
+    "\U0001F1E0-\U0001F1FF"
+    "\U00002700-\U000027BF"
+    "\U000024C2-\U0001F251"
+    "]+",
+    flags=re.UNICODE,
+)
+def contains_emoji(value):
+    return bool(EMOJI_PATTERN.search(value))
+
+def normalize_whitespace(value):
+    """Replace multiple spaces with a single space"""
+    return re.sub(r"\s+", " ", value).strip()
+
 class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
     course_interested = serializers.CharField(
         required=False, allow_blank=True, write_only=True
@@ -509,29 +530,128 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
 
         return super().update(instance, validated_data)
     
-    # def validate(self, data):
-      
-    #     email = data.get('email')
+    def validate(self, data):
 
-    #     if email:  # Only validate if email is provided and not empty after strip
-    #         email = email.strip()
-    #         if len(email) < 5:
-    #             raise serializers.ValidationError({
-    #                 "message": "Email address is too short. Please provide a valid email."
-    #             })
-    #         if len(email) > 150:
-    #             raise serializers.ValidationError({
-    #                 "message": "Email address is too long. Maximum 150 characters allowed."
-    #             })
-    #         if not re.match(r"^[\w\.\+\-']+@[\w\-\.]+\.[a-zA-Z]{2,}$", email):
-    #             raise serializers.ValidationError({
-    #                 "message": "Please enter a valid email address (e.g. name@example.com)."
-    #             })
+        # ---------- TEXT FIELD RULES ----------
+        TEXT_FIELDS_RULES = {
+            "student_name": (3, 100),
+            "guardian_name": (3, 100),
+            "occupation": (2, 100),
+            "address": (5, 255),
+            "educational_qualification": (2, 100),
+            "university_college": (2, 150),
+            "heard_from": (2, 100),
+            "course_interested": (2, 150),
+        }
+    
+        for field, (min_len, max_len) in TEXT_FIELDS_RULES.items():
+            value = data.get(field)
 
+            if value:
+                value = normalize_whitespace(value)
 
-    #         data['email'] = email
+                if field == "guardian_name" or field == "student_name" or field == "occupation" or field == "educational_qualification" or field == "university_college":
+                    value = value.title()
 
-    #     return data
+                if len(value) < min_len:
+                    raise serializers.ValidationError({
+                        field: f"{field.replace('_', ' ').title()} must be at least {min_len} characters."
+                    })
+
+                if len(value) > max_len:
+                    raise serializers.ValidationError({
+                        field: f"{field.replace('_', ' ').title()} must not exceed {max_len} characters."
+                    })
+
+                if contains_emoji(value):
+                    raise serializers.ValidationError({
+                        field: f"{field.replace('_', ' ').title()} must not contain emojis."
+                    })
+
+                data[field] = value
+
+    
+        # ---------- EMAIL ----------
+        email = data.get("email")
+        if email:
+            email = email.strip()
+    
+            if len(email) < 5 or len(email) > 150:
+                raise serializers.ValidationError({
+                    "email": "Email must be between 5 and 150 characters."
+                })
+    
+            if contains_emoji(email):
+                raise serializers.ValidationError({
+                    "email": "Email must not contain emojis."
+                })
+    
+            if not re.match(r"^[\w\.\+\-']+@[\w\-\.]+\.[a-zA-Z]{2,}$", email):
+                raise serializers.ValidationError({
+                    "email": "Please enter a valid email address."
+                })
+    
+            data["email"] = email
+    
+        # ---------- PHONE NUMBERS ----------
+        for phone_field in ["phone1", "phone2"]:
+            phone = data.get(phone_field)
+            if phone:
+                phone = phone.strip()
+                if not re.fullmatch(r"\d{10}", phone):
+                    raise serializers.ValidationError({
+                        phone_field: "Phone number must contain exactly 10 digits."
+                    })
+                data[phone_field] = phone
+    
+        # ---------- DATE OF BIRTH ----------
+        dob = data.get("date_of_birth")
+        if dob:
+            if dob >= date.today():
+                raise serializers.ValidationError({
+                    "date_of_birth": "Date of birth must be in the past."
+                })
+    
+        # ---------- GENDER ----------
+        gender = data.get("gender")
+        if gender:
+            gender = gender.strip().lower()
+            if gender not in ["male", "female", "other"]:
+                raise serializers.ValidationError({
+                    "gender": "Gender must be Male, Female, or Other."
+                })
+            data["gender"] = gender
+    
+        # ---------- PERCENTAGE ----------
+        percentage = data.get("percentage")
+        if percentage is not None:
+            try:
+                percentage = float(percentage)
+                if percentage < 0 or percentage > 100:
+                    raise serializers.ValidationError({
+                        "percentage": "Percentage must be between 0 and 100."
+                    })
+                data["percentage"] = percentage
+            except (ValueError, TypeError):
+                raise serializers.ValidationError({
+                    "percentage": "Percentage must be a valid number."
+                })
+    
+        # ---------- YEAR OF PASSING ----------
+        year = data.get("year_of_passing")
+        if year:
+            if not re.fullmatch(r"\d{4}", str(year)):
+                raise serializers.ValidationError({
+                    "year_of_passing": "Year of passing must be a 4-digit year."
+                })
+            current_year = datetime.now().year
+            if year < 2000 or year > current_year:
+                raise serializers.ValidationError({
+                    "year_of_passing": "Year of passing must be between 2000 and the current year."
+            })
+    
+        return data
+    
     
 
 class FollowUpDetailSerializer(serializers.ModelSerializer):
