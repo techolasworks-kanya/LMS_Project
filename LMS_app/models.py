@@ -198,7 +198,6 @@ class Admission(models.Model):
    'Python Full Stack':'PFS',
    'Mearn Stack':'MS',
    'Business Analytics': 'BA'
-    # Add more as needed
     }
     @staticmethod
     def get_course_code(course_name):

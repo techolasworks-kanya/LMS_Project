@@ -483,8 +483,6 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
         required=False, allow_blank=True, write_only=True
     )
     email = serializers.CharField(max_length=150,allow_blank=True,required=False,)
-    
-
    
 
     class Meta:
@@ -1039,13 +1037,13 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
             enquiry_data = {k: v for k, v in enquiry_data.items() if v is not None}
             enquiry = Enquiry.objects.create(**enquiry_data)
             
-            if guardian_occupation:
-                FollowUps.objects.create(
-                    enquiry=enquiry,
-                    enquiry_source=enquiry.heard_from,
-                    guardian_occupation=guardian_occupation,
-                    status='new'
-                )
+            # if guardian_occupation:
+            #     FollowUps.objects.create(
+            #         enquiry=enquiry,
+            #         enquiry_source=enquiry.heard_from,
+            #         guardian_occupation=guardian_occupation,
+            #         status='new'
+            #     )
         else:
             enquiry = get_object_or_404(Enquiry, id=validated_data.pop('enquiry_id'))
             guardian_occupation = validated_data.pop('guardian_occupation', None)

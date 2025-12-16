@@ -254,7 +254,7 @@ from django.db.models import Exists, OuterRef
 class EnquiryListCreateView(generics.ListCreateAPIView):
     queryset = Enquiry.objects.all()
     permission_classes = [AllowAny]
-    # pagination_class = PageNumberPagination
+    pagination_class = PageNumberPagination
 
     def get_serializer_class(self):
         return EnquiryCreateSerializer if self.request.method == 'POST' else EnquiryListSerializer
@@ -356,6 +356,7 @@ from django.db.models import OuterRef, Exists, Subquery
 
 class EnquiryStatusListView(APIView):
     permission_classes = [AllowAny]
+    pagination_class = PageNumberPagination
 
     def get(self, request):
         latest_admission = Admission.objects.filter(
@@ -378,9 +379,11 @@ class EnquiryStatusListView(APIView):
         ).filter(
             Q(has_followup=True) | Q(has_admission=True)
         ).select_related('course_interested').order_by('-enquiry_date')
-
+#pagination checking
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(enquiries, request, view=self)
         results = []
-        for enquiry in enquiries:
+        for enquiry in page:
             if enquiry.has_admission:
                 status_label = "admission"
                 conversion_date = enquiry.admission_date.strftime("%d-%m-%Y") if enquiry.admission_date else None
@@ -398,7 +401,8 @@ class EnquiryStatusListView(APIView):
                 "conversion_date": conversion_date,  # Only shown when status = admission
             })
 
-        return Response(results)
+        # return Response(results)
+        return paginator.get_paginated_response(results)
 
 
 
@@ -441,7 +445,7 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
 
     
     permission_classes = [AllowAny]
-    # pagination_class = PageNumberPagination
+    pagination_class = PageNumberPagination
 
     def get_serializer_class(self):
         return FollowUpListSerializer if self.request.method == 'GET' else FollowUpDetailSerializer
@@ -568,7 +572,7 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
         return queryset.order_by('-id')
     
     permission_classes = [AllowAny]
-    # pagination_class = PageNumberPagination
+    pagination_class = PageNumberPagination
 
     def get_serializer_class(self):
         return AdmissionListSerializer if self.request.method == 'GET' else AdmissionCreateSerializer
@@ -682,7 +686,6 @@ class AdmissionUpdateView(generics.UpdateAPIView):
    
     def post(self, request, *args, **kwargs):
         if not kwargs.get('id'):
-            # Combine data and files
             data = request.data.copy()
             data.update(request.FILES)
             
