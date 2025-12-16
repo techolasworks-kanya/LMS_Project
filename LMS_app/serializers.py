@@ -214,7 +214,7 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
 
         if qual_len < 3:
             raise serializers.ValidationError({
-                "message": "Educational qualification is too short. Please enter full qualification. Minimum 4 characters."
+                "message": "Educational qualification is too short. Please enter full qualification. Minimum 3 characters."
             })
 
         if qual_len > 100:
@@ -688,7 +688,6 @@ class AdmissionListSerializer(serializers.ModelSerializer):
     def get_student_name(self, obj):
         return obj.enquiry.student_name if obj.enquiry else None
 
- 
     def get_date_of_birth(self, obj):
         if obj.enquiry and obj.enquiry.date_of_birth:
             return obj.enquiry.date_of_birth.strftime('%Y-%m-%d')  # Changed to dd-mm-yyyy
@@ -809,7 +808,7 @@ from django.shortcuts import get_object_or_404
 
 class AdmissionUpdateSerializer(serializers.ModelSerializer):
     enquiry_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
-    student_name = serializers.CharField(max_length=100)
+    student_name = serializers.CharField()
     date_of_birth = serializers.DateField(required=False, allow_null=True)
     guardian_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
     guardian_occupation = serializers.CharField(max_length=100, required=False, allow_blank=True)
@@ -858,12 +857,19 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
         data['course_interested'] = course_obj
         return data
 
+        # if student_name := data.get('student_name'):
+        #     data['student_name'] = str(student_name).strip()
+        #     if len(data['student_name']) < 3 or len(data['student_name']) > 100:
+        #         raise serializers.ValidationError({
+        #             "student_name": "Student name must be between 3 and 100 characters."
+        #         })
+        #     return data
+
     def get_date_of_birth(self, obj):
         if obj.enquiry and obj.enquiry.date_of_birth:
             return obj.enquiry.date_of_birth.strftime('%d-%m-%Y')
         return None
-
-   
+    
     def update(self, instance, validated_data):
         course_obj = validated_data.pop('course_interested', None)
         
@@ -926,11 +932,76 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
         
         instance.save()
         return instance
-        
 
-    
-    
-    
+
+
+    def validate(self, data):
+        date_of_birth = data.get('date_of_birth')
+        if date_of_birth:
+            if date_of_birth > date.today():
+                raise serializers.ValidationError({
+                    "date_of_birth": "Date of birth cannot be in the future."
+                })
+            elif date_of_birth.year < 1930:
+                raise serializers.ValidationError({
+                    "date_of_birth": "Date of birth cannot be before 1930."
+                })
+        student_name = data.get('student_name', '').strip()
+        if len(student_name) < 3 or len(student_name) > 100:
+            raise serializers.ValidationError({
+                "student_name": "Student name must be between 3 and 100 characters."
+            })
+        
+        guardian_name = data.get('guardian_name', '').strip()
+        if guardian_name and (len(guardian_name) < 3 or len(guardian_name) > 100):
+            raise serializers.ValidationError({
+                "guardian_name": "Guardian name must be between 3 and 100 characters."
+            })
+        
+        contact_number2 = data.get('phone2', '').strip()
+        if contact_number2 and len(contact_number2) < 7 or len(contact_number2) > 15:
+            raise serializers.ValidationError({
+                "phone2": "Contact number 2 must be between 7 and 15 digits."
+            })
+        email = data.get('email', '').strip()
+        if email:
+            if len(email) < 5:
+                raise serializers.ValidationError({
+                    "email": "Email address is too short. Please provide a valid email."
+                })
+            if len(email) > 100:
+                raise serializers.ValidationError({
+                    "email": "Email address is too long. Maximum 100 characters allowed."
+                })
+            if not re.match(r"^[\w\.\+\-']+@[\w\-\.]+\.[a-zA-Z]{2,}$", email):
+                raise serializers.ValidationError({
+                    "email": "Please enter a valid email address (e.g.) 3l0M5@example.com"
+                })
+
+        address = data.get('address', '').strip()
+        if address and (len(address) < 5 or len(address) > 300):
+            raise serializers.ValidationError({
+                "address": "Address must be between 5 and 300 characters."
+            })
+        qualification = data.get('educational_qualification', '').strip()
+        if qualification and (len(qualification) < 3 or len(qualification) > 100):
+            raise serializers.ValidationError({
+                "educational_qualification": "Educational qualification must be between 3 and 100 characters."
+                
+            })
+        university = data.get('university_college', '').strip()
+        if university and (len(university) < 3 or len(university) > 100):
+            raise serializers.ValidationError({
+                "university_college": "University/College name must be between 3 and 100"
+            })
+        year_of_passing = data.get('year_of_passing')
+        if year_of_passing:
+            if year_of_passing < 1930 or year_of_passing > date.today().year:
+                raise serializers.ValidationError({
+                    "year_of_passing": "Year of passing must be between 1930 and current year."
+        
+                })
+        return data
 
     def create(self, validated_data):
         course_obj = validated_data.pop('course_interested')
@@ -1008,12 +1079,9 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
         })
         
         admission = Admission(**admission_data)
-        # admission.save(force_under_review=force_under_review)
         if force_under_review:
             admission.status = 'under review'
             admission.save()
-        
-       
         return admission
     
   

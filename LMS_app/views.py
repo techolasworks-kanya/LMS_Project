@@ -254,6 +254,7 @@ from django.db.models import Exists, OuterRef
 class EnquiryListCreateView(generics.ListCreateAPIView):
     queryset = Enquiry.objects.all()
     permission_classes = [AllowAny]
+    pagination_class = PageNumberPagination
 
     def get_serializer_class(self):
         return EnquiryCreateSerializer if self.request.method == 'POST' else EnquiryListSerializer
@@ -289,13 +290,13 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
             is_read=False
         )
         return enquiry
+    
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         enquiry = self.perform_create(serializer)
 
-        # Use the same serializer for response
         response_data = {
             "student_name": enquiry.student_name,
             "heard_from": enquiry.heard_from,
@@ -440,7 +441,7 @@ class FollowUpListCreateView(generics.ListCreateAPIView):
 
     
     permission_classes = [AllowAny]
-    # pagination_class = PageNumberPagination
+    pagination_class = PageNumberPagination
 
     def get_serializer_class(self):
         return FollowUpListSerializer if self.request.method == 'GET' else FollowUpDetailSerializer
@@ -567,7 +568,7 @@ class AdmissionListCreateView(generics.ListCreateAPIView):
         return queryset.order_by('-id')
     
     permission_classes = [AllowAny]
-    # pagination_class = PageNumberPagination
+    pagination_class = PageNumberPagination
 
     def get_serializer_class(self):
         return AdmissionListSerializer if self.request.method == 'GET' else AdmissionCreateSerializer
@@ -1693,13 +1694,11 @@ Kochi, Kerala
 +91-XXXXXXXXXX | info@technosolutions.in
         """.strip()
 
-        # 5. Create and send email
         email = EmailMessage(
             subject=subject,
             body=message,
             from_email="sysolmachinetest@gmail.com",
             to=[student_email],
-            # cc=["accounts@technosolutions.in"],  # optional
         )
         email.attach(filename, pdf_file.read(), 'application/pdf')
 
@@ -1760,8 +1759,6 @@ class PaidAdmissionsDetailView(generics.RetrieveUpdateDestroyAPIView):
         return Response(PaidAdmissionDetailSerializer(instance, context={'request': request}).data)
 
 
-
-
 class PaidAdmissionUpdateView(generics.UpdateAPIView):
     queryset = Admission.objects.filter(is_deleted=False)
     serializer_class = PaidAdmissionUpdateSerializer
@@ -1779,8 +1776,6 @@ class PaidAdmissionUpdateView(generics.UpdateAPIView):
 
     def put(self, request, *args, **kwargs):
         return self.update(request, *args, **kwargs)
-
-
 
 # DELETE multiple paid admissions 
 class PaidAdmissionDeleteView(APIView):
@@ -1823,7 +1818,6 @@ class ConfirmedAdmissionsListView(generics.ListAPIView):
 
 
 
-# 2. CONFIRM a single admission (POST with ID in URL)
 class ConfirmAdmissionView(APIView):
     permission_classes = [AllowAny]
 
