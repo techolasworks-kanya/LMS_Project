@@ -857,13 +857,7 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
         data['course_interested'] = course_obj
         return data
 
-        # if student_name := data.get('student_name'):
-        #     data['student_name'] = str(student_name).strip()
-        #     if len(data['student_name']) < 3 or len(data['student_name']) > 100:
-        #         raise serializers.ValidationError({
-        #             "student_name": "Student name must be between 3 and 100 characters."
-        #         })
-        #     return data
+        
 
     def get_date_of_birth(self, obj):
         if obj.enquiry and obj.enquiry.date_of_birth:
