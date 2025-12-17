@@ -1,11 +1,13 @@
 from decimal import Decimal
 import re
+from datetime import date
+from datetime import datetime
 from rest_framework import serializers
 from .models import *
 from django.utils import timezone
 from datetime import timedelta  
-from datetime import datetime
 import datetime as dt_module 
+from rest_framework.exceptions import ValidationError  
 
 
 
@@ -37,7 +39,49 @@ class CourseListSerializer(serializers.ModelSerializer):
         model = course
         fields = ['course_name', 'duration', 'course_fee']
         
-from rest_framework.exceptions import ValidationError  
+
+
+
+# added by yadhu
+def normalize_and_validate_text(
+    value,
+    field_name,
+    min_len,
+    max_len,
+    capitalize=False,
+    block_urls=False
+):
+    if not value:
+        return value
+
+    value = normalize_whitespace(value)
+
+    if capitalize:
+        value = value.title()
+
+    if len(value) < min_len:
+        raise serializers.ValidationError({
+            field_name: f"{field_name.replace('_', ' ').title()} must be at least {min_len} characters."
+        })
+
+    if len(value) > max_len:
+        raise serializers.ValidationError({
+            field_name: f"{field_name.replace('_', ' ').title()} must not exceed {max_len} characters."
+        })
+
+    if contains_emoji(value):
+        raise serializers.ValidationError({
+            field_name: f"{field_name.replace('_', ' ').title()} must not contain emojis."
+        })
+
+    if block_urls and contains_url(value):
+        raise serializers.ValidationError({
+            field_name: f"{field_name.replace('_', ' ').title()} must not contain URLs."
+        })
+
+    return value
+# closed by yadhu
+
 class EnquiryCreateSerializer(serializers.ModelSerializer):
     course_name = serializers.CharField(source='course_interested.course_name',read_only=True)
 
@@ -53,9 +97,44 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
         }
 
   
-        
+# added by yadhu
+    def validate(self, data):
+
+        TEXT_FIELDS_RULES = {
+            "student_name": (3, 100, True, False),
+            "guardian_name": (3, 100, True, False),
+            "occupation": (2, 100, True, False),
+            "address": (5, 255, False, True),
+            "educational_qualification": (2, 100, True, False),
+            "university_college": (2, 150, True, False),
+        }
     
+        for field, (min_len, max_len, capitalize, block_urls) in TEXT_FIELDS_RULES.items():
+            value = data.get(field)
+            if value:
+                data[field] = normalize_and_validate_text(
+                    value=value,
+                    field_name=field,
+                    min_len=min_len,
+                    max_len=max_len,
+                    capitalize=capitalize,
+                    block_urls=block_urls
+                )
+    
+        return data
+# closed by yadhu
+
     def to_internal_value(self, data):
+        data = super().to_internal_value(data)
+
+        # Remove any unexpected keys that might sneak in (like 'action')
+        valid_fields = set(self.fields.fields.keys())
+        keys_to_remove = [k for k in data.keys() if k not in valid_fields]
+        for k in keys_to_remove:
+            data.pop(k, None)
+
+
+
         data = dict(data)
 
         student_name = data.get('student_name', '')
@@ -357,6 +436,8 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
 
         return data
 
+
+
 class EnquiryListSerializer(serializers.ModelSerializer):
     course_name = serializers.CharField(
         source='course_interested.course_name',
@@ -478,8 +559,7 @@ class FollowUpListSerializer(serializers.ModelSerializer):
 
 
 
-import re
-from datetime import date
+
 # Emoji Detection Helper
 EMOJI_PATTERN = re.compile(
     "["
@@ -492,6 +572,15 @@ EMOJI_PATTERN = re.compile(
     "]+",
     flags=re.UNICODE,
 )
+
+URL_PATTERN = re.compile(
+    r"(https?://|www\.|\.com|\.net|\.org|\.in)",
+    re.IGNORECASE
+)
+
+def contains_url(value):
+    return bool(URL_PATTERN.search(value))
+
 def contains_emoji(value):
     return bool(EMOJI_PATTERN.search(value))
 
@@ -567,6 +656,11 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         field: f"{field.replace('_', ' ').title()} must not contain emojis."
                     })
+                
+                if field == "address" and contains_url(value):
+                    raise serializers.ValidationError({
+                        field: "Address must not contain URLs or website links."
+                    })
 
                 data[field] = value
 
@@ -598,7 +692,7 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
             phone = data.get(phone_field)
             if phone:
                 phone = phone.strip()
-                if not re.fullmatch(r"\d{10}", phone):
+                if not re.fullmatch(r"\d{7,15}", phone):
                     raise serializers.ValidationError({
                         phone_field: "Phone number must contain exactly 10 digits."
                     })
@@ -657,7 +751,7 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
 class FollowUpDetailSerializer(serializers.ModelSerializer):
     # WRITE-ONLY INPUT FIELDS
     remarks = serializers.ListField(
-        child=serializers.CharField(max_length=1000, allow_blank=True),
+        child=serializers.CharField(max_length=500, allow_blank=True),
         write_only=True,
         required=False
     )
@@ -683,8 +777,39 @@ class FollowUpDetailSerializer(serializers.ModelSerializer):
             'enquiry_data', 'remarks_history',
             'enquiry_ids', 'remarks', 'enquiry'
         ]
+    # added by yadhu
+    def validate_next_followup_date(self, value):
+        """
+        Business rules for next follow-up date:
+        - Cannot be earlier than follow-up date
+        - Cannot exceed 90 days from follow-up date
+        """
+        if not value:
+            return value
+    
+        if self.instance:
+            followup_date = self.instance.followup_date
+            max_allowed_date = followup_date + timedelta(days=90)
+    
+            if value < followup_date:
+                raise serializers.ValidationError(
+                    "Next follow-up date cannot be earlier than the follow-up date."
+                )
+    
+            if value > max_allowed_date:
+                raise serializers.ValidationError(
+                    "Next follow-up date cannot be more than 90 days from the follow-up date."
+                )
+    
+        return value
 
-
+    def validate_remarks(self, remarks_list):
+        for idx, remark in enumerate(remarks_list, start=1):
+            if len(remark.strip()) > 500:
+                raise serializers.ValidationError({
+                    "remarks": f"Remark #{idx} exceeds the maximum limit of {MAX_REMARK_LENGTH} characters."
+                })
+        return remarks_list
     
     def get_enquiry_data(self, obj):
         e = obj.enquiry
@@ -888,9 +1013,23 @@ class AdmissionListSerializer(serializers.ModelSerializer):
         if latest_followup and latest_followup.guardian_occupation:
             return latest_followup.guardian_occupation
         return obj.enquiry.occupation or ""
+
+
+MAX_IMAGE_SIZE_MB = 2
+MAX_PDF_SIZE_MB = 5
+
+def validate_image_size(file):
+    if file.size > MAX_IMAGE_SIZE_MB * 1024 * 1024:
+        raise serializers.ValidationError(
+            f"Image size must be less than {MAX_IMAGE_SIZE_MB} MB."
+        )
+
+def validate_pdf_size(file):
+    if file.size > MAX_PDF_SIZE_MB * 1024 * 1024:
+        raise serializers.ValidationError(
+            f"File size must be less than {MAX_PDF_SIZE_MB} MB."
+        )
     
-
-
 class AdmissionCreateSerializer(serializers.ModelSerializer):
     enquiry_ids = serializers.ListField(
         child=serializers.IntegerField(),
@@ -906,25 +1045,121 @@ class AdmissionCreateSerializer(serializers.ModelSerializer):
         help_text="List of followup IDs to convert to admissions"
     )
 
+    student_photo = serializers.ImageField(
+        required=False,
+        allow_null=True,
+        validators=[validate_image_size]
+    )
+
+    aadhaar_copy = serializers.FileField(
+        required=False,
+        allow_null=True,
+        validators=[validate_pdf_size]
+    )
+
+    educational_certificate = serializers.FileField(
+        required=False,   #  NOT mandatory
+        allow_null=True,
+        validators=[validate_pdf_size]
+    )
+
     def validate(self, attrs):
-        # Must provide either enquiry_ids or followup_id
+        # ---------- EXISTING CHECK ----------
         if not attrs.get("enquiry_ids") and not attrs.get("followup_ids"):
             raise serializers.ValidationError(
                 "Either 'enquiry_ids' or 'followup_id' is required."
             )
-
+    
+        enquiry_ids = attrs.get("enquiry_ids", [])
+        enquiries = Enquiry.objects.filter(id__in=enquiry_ids)
+    
+        if not enquiries.exists():
+            raise serializers.ValidationError("Invalid enquiry ID(s).")
+    
+        for enquiry in enquiries:
+            # ---------- STUDENT NAME ----------
+            if not enquiry.student_name or len(enquiry.student_name.strip()) < 3:
+                raise serializers.ValidationError({
+                    "student_name": "Student name must be at least 3 characters."
+                })
+    
+            if contains_emoji(enquiry.student_name):
+                raise serializers.ValidationError({
+                    "student_name": "Student name must not contain emojis."
+                })
+    
+            # ---------- GUARDIAN NAME ----------
+            if not enquiry.guardian_name or len(enquiry.guardian_name.strip()) < 3:
+                raise serializers.ValidationError({
+                    "guardian_name": "Guardian name must be at least 3 characters."
+                })
+    
+            # ---------- OCCUPATION ----------
+            if not enquiry.occupation or len(enquiry.occupation.strip()) < 2:
+                raise serializers.ValidationError({
+                    "occupation": "Occupation must be at least 2 characters."
+                })
+    
+            # ---------- QUALIFICATION ----------
+            if not enquiry.educational_qualification:
+                raise serializers.ValidationError({
+                    "educational_qualification": "Educational qualification is required."
+                })
+    
+            # ---------- UNIVERSITY ----------
+            if not enquiry.university_college:
+                raise serializers.ValidationError({
+                    "university_college": "University / College name is required."
+                })
+    
+            # ---------- EMAIL ----------
+            if not enquiry.email:
+                raise serializers.ValidationError({
+                    "email": "Email is required."
+                })
+    
+            if not re.match(r"^[\w\.\+\-']+@[\w\-\.]+\.[a-zA-Z]{2,}$", enquiry.email):
+                raise serializers.ValidationError({
+                    "email": "Please enter a valid email address."
+                })
+    
+            if Enquiry.objects.filter(email=enquiry.email).exclude(id=enquiry.id).exists():
+                raise serializers.ValidationError({
+                    "email": "This email is already registered."
+                })
+    
+            # ---------- PHONE ----------
+            if not enquiry.phone1 or not re.fullmatch(r"\d{10}", enquiry.phone1):
+                raise serializers.ValidationError({
+                    "phone1": "Phone number must contain exactly 10 digits."
+                })
+    
+            # ---------- AADHAAR ----------
+            if enquiry.aadhaar_number:
+                if not re.fullmatch(r"\d{12}", enquiry.aadhaar_number):
+                    raise serializers.ValidationError({
+                        "aadhaar_number": "Aadhaar number must be exactly 12 digits."
+                    })
+    
         return attrs
+
     
     class Meta:
         model = Admission
-        fields = ['enquiry_ids','followup_ids']
+        fields = ['enquiry_ids',
+            'followup_ids',
+            'student_photo',
+            'aadhaar_copy',
+            'educational_certificate',]
         def get_date_of_birth(self, obj):
             if obj.enquiry and obj.enquiry.date_of_birth:
                 return obj.enquiry.date_of_birth.strftime('%d-%m-%Y')
             return None    
-   
+
+
 
 from django.shortcuts import get_object_or_404
+
 
 class AdmissionUpdateSerializer(serializers.ModelSerializer):
     enquiry_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
@@ -1603,14 +1838,4 @@ class AdmisionNotificationSerializer(serializers.ModelSerializer):
 
 
         
-
-
-
-
-
-
-
-
-
-
 

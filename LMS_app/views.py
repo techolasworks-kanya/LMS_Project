@@ -250,11 +250,11 @@ class CourseDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 from django.db.models import Exists, OuterRef
 
-
+  
 class EnquiryListCreateView(generics.ListCreateAPIView):
     queryset = Enquiry.objects.all()
     permission_classes = [AllowAny]
-    # pagination_class = PageNumberPagination
+    pagination_class = PageNumberPagination
 
     def get_serializer_class(self):
         return EnquiryCreateSerializer if self.request.method == 'POST' else EnquiryListSerializer
@@ -320,6 +320,7 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
             "data": response_data
         }, status=status.HTTP_201_CREATED)
     
+
 
 #todays enquirires and count  - if zero enqur
 class TodayEnquiryListView(generics.ListAPIView):
