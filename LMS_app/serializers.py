@@ -38,6 +38,7 @@ class CourseListSerializer(serializers.ModelSerializer):
         fields = ['course_name', 'duration', 'course_fee']
         
 from rest_framework.exceptions import ValidationError  
+
 class EnquiryCreateSerializer(serializers.ModelSerializer):
     course_name = serializers.CharField(source='course_interested.course_name',read_only=True)
 
@@ -356,6 +357,8 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
         
 
         return data
+
+
 
 class EnquiryListSerializer(serializers.ModelSerializer):
     course_name = serializers.CharField(
