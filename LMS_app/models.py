@@ -143,8 +143,7 @@ class EnquiryArchive(models.Model):
 #follow-up actions
 from django.utils import timezone
 class FollowUps(models.Model):
-    enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE,
-                                related_name='follow_up_actions')
+    enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE,related_name='follow_up_actions')
     followup_date = models.DateField(auto_now_add=True, editable=False)
     enquiry_source = models.CharField(max_length=20, editable=False)
     guardian_occupation = models.CharField(max_length=100, blank=True, null=True)
