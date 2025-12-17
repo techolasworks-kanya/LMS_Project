@@ -155,7 +155,7 @@ class FollowUps(models.Model):
         ('interested', 'Interested'),
         ('not_interested', 'Not Interested'),
         ('contacted', 'Contacted'),
-        ('indiscussion', 'In Discussion')
+        ('in_discussion', 'In Discussion')
     ]
     status = models.CharField(max_length=20, choices=STATUS_CHOICES,
                               default='new')
@@ -341,6 +341,7 @@ class Payment(models.Model):
     ]
 
     receipt_type = models.CharField(max_length=20, choices=RECEIPT_TYPE_CHOICES, default='print receipt')
+
 
     class Meta:
         verbose_name_plural = "Payments"
