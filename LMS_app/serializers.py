@@ -64,9 +64,9 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
             student_name = student_name[0] if student_name else ''
         student_name = str(student_name).strip()
 
-        if len(student_name) > 55:
+        if len(student_name) > 55 or len(student_name) < 3:
             raise serializers.ValidationError({
-                "message": "Student name is too long. Maximum 55 characters allowed."
+                "message": "Name should be between 3 to 55 characters."
             })
 
         data['student_name'] = student_name
@@ -77,9 +77,9 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
             guardian_name = guardian_name[0] if guardian_name else ''
         guardian_name = str(guardian_name).strip()
 
-        if len(guardian_name) > 40:
+        if len(guardian_name) > 40 or len(guardian_name) < 3:
             raise serializers.ValidationError({
-                "message": "Guardian name is too long. Maximum 40 characters allowed"
+                "message": "Guardian name should be between 3 to 40 characters."
             })
         
         #=== Guardian occupation ===
@@ -341,6 +341,17 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
                 data['date_of_birth'] = parsed
             else:
                 data['date_of_birth'] = None
+        if date_of_birth := data.get('date_of_birth'):
+            if date_of_birth > dt_module.datetime.now().date():
+                raise serializers.ValidationError({
+                    "date_of_birth": "Date of birth cannot be in the future."
+                })
+            elif date_of_birth.year < 1930:
+                raise serializers.ValidationError({
+                    "date_of_birth": "Date of birth cannot be before 1930."
+                })
+
+            
 
         # Clean blank/null fields
         empty_vals = ['', 'null', 'undefined', 'None']
@@ -483,20 +494,7 @@ class FollowUpListSerializer(serializers.ModelSerializer):
 
 import re
 from datetime import date
-# Emoji Detection Helper
-EMOJI_PATTERN = re.compile(
-    "["
-    "\U0001F600-\U0001F64F"
-    "\U0001F300-\U0001F5FF"
-    "\U0001F680-\U0001F6FF"
-    "\U0001F1E0-\U0001F1FF"
-    "\U00002700-\U000027BF"
-    "\U000024C2-\U0001F251"
-    "]+",
-    flags=re.UNICODE,
-)
-def contains_emoji(value):
-    return bool(EMOJI_PATTERN.search(value))
+
 
 def normalize_whitespace(value):
     """Replace multiple spaces with a single space"""
@@ -507,6 +505,8 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
         required=False, allow_blank=True, write_only=True
     )
     email = serializers.CharField(max_length=150,allow_blank=True,required=False,)
+    student_name = serializers.CharField(max_length=100,allow_blank=True,required=False,)
+
    
 
     class Meta:
@@ -527,131 +527,67 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
                 validated_data['course_interested'] = course_obj
             else:
                 validated_data['course_interested'] = None
-       
 
+        student_name = validated_data.get('student_name', instance.student_name)
+
+        if len(student_name) < 3 or len(student_name) > 100:
+            raise serializers.ValidationError({'student_name': "student name should be between 3 to 100 characters."})
+        
+        guardian_name = validated_data.get('guardian_name', instance.guardian_name)
+
+        if len(guardian_name) < 3 or len(guardian_name) > 100:
+            raise serializers.ValidationError({'guardian_name': "guardian name should be between 3 to 100 characters."})
+        
+        occupation = validated_data.get('occupation', instance.occupation)
+
+        if len(occupation) < 3 or len(occupation) > 100:
+            raise serializers.ValidationError({'occupation': "Occupation should be between 3 to 100 characters."})
+        
+        phone1 = validated_data.get('phone1', instance.phone1)
+
+        if len(phone1) < 10 or len(phone1) > 15:
+            raise serializers.ValidationError({'phone1': "Phone number should be between 10 to 15 characters."})
+        
+        phone2 = validated_data.get('phone2', instance.phone2)
+
+        if len(phone2) < 10 or len(phone2) > 15:
+            raise serializers.ValidationError({'phone2': "Phone number should be between 10 to 15 characters."})
+        
+        email = validated_data.get('email', instance.email)
+
+        if len(email) < 5 or len(email) > 150:
+            raise serializers.ValidationError({'email': "Email should be between 5 to 150 characters."})
+        
+        address = validated_data.get('address', instance.address)
+
+        if len(address) < 5 or len(address) > 150:
+            raise serializers.ValidationError({'address': "Address should be between 5 to 150 characters."})
+        
+        qualification = validated_data.get('educational_qualification', instance.educational_qualification)
+
+        if len(qualification) < 3 or len(qualification) > 150:
+            raise serializers.ValidationError({'educational_qualification': "Qualification should be between 3 to 150 characters."})
+        
+        university_college = validated_data.get('university_college', instance.university_college)
+
+        if len(university_college) < 3 or len(university_college) > 150:
+            raise serializers.ValidationError({'university_college': "University or College should be between 3 to 150 characters."})
+    #persentage  need to be in between 0-100 
+        percentage = validated_data.get('percentage', instance.percentage)
+
+        if percentage < 0 or percentage > 100:
+            raise serializers.ValidationError({'percentage': "Percentage should be between 0 to 100."})
+
+       
+    #year of passig should be in betwween 1930 to  current year
+        year_of_passing = validated_data.get('year_of_passing', instance.year_of_passing)
+
+        if year_of_passing < 1930 or year_of_passing > date.today().year:
+            raise serializers.ValidationError({'year_of_passing': "Year of passing should be between 1930 to current year."})
         return super().update(instance, validated_data)
     
-    def validate(self, data):
-
-        # ---------- TEXT FIELD RULES ----------
-        TEXT_FIELDS_RULES = {
-            "student_name": (3, 100),
-            "guardian_name": (3, 100),
-            "occupation": (2, 100),
-            "address": (5, 255),
-            "educational_qualification": (2, 100),
-            "university_college": (2, 150),
-            "heard_from": (2, 100),
-            "course_interested": (2, 150),
-        }
     
-        for field, (min_len, max_len) in TEXT_FIELDS_RULES.items():
-            value = data.get(field)
-
-            if value:
-                value = normalize_whitespace(value)
-
-                if field == "guardian_name" or field == "student_name" or field == "occupation" or field == "educational_qualification" or field == "university_college":
-                    value = value.title()
-
-                if len(value) < min_len:
-                    raise serializers.ValidationError({
-                        field: f"{field.replace('_', ' ').title()} must be at least {min_len} characters."
-                    })
-
-                if len(value) > max_len:
-                    raise serializers.ValidationError({
-                        field: f"{field.replace('_', ' ').title()} must not exceed {max_len} characters."
-                    })
-
-                if contains_emoji(value):
-                    raise serializers.ValidationError({
-                        field: f"{field.replace('_', ' ').title()} must not contain emojis."
-                    })
-
-                data[field] = value
-
     
-        # ---------- EMAIL ----------
-        email = data.get("email")
-        if email:
-            email = email.strip()
-    
-            if len(email) < 5 or len(email) > 150:
-                raise serializers.ValidationError({
-                    "email": "Email must be between 5 and 150 characters."
-                })
-    
-            if contains_emoji(email):
-                raise serializers.ValidationError({
-                    "email": "Email must not contain emojis."
-                })
-    
-            if not re.match(r"^[\w\.\+\-']+@[\w\-\.]+\.[a-zA-Z]{2,}$", email):
-                raise serializers.ValidationError({
-                    "email": "Please enter a valid email address."
-                })
-    
-            data["email"] = email
-    
-        # ---------- PHONE NUMBERS ----------
-        for phone_field in ["phone1", "phone2"]:
-            phone = data.get(phone_field)
-            if phone:
-                phone = phone.strip()
-                if not re.fullmatch(r"\d{10}", phone):
-                    raise serializers.ValidationError({
-                        phone_field: "Phone number must contain exactly 10 digits."
-                    })
-                data[phone_field] = phone
-    
-        # ---------- DATE OF BIRTH ----------
-        dob = data.get("date_of_birth")
-        if dob:
-            if dob >= date.today():
-                raise serializers.ValidationError({
-                    "date_of_birth": "Date of birth must be in the past."
-                })
-    
-        # ---------- GENDER ----------
-        gender = data.get("gender")
-        if gender:
-            gender = gender.strip().lower()
-            if gender not in ["male", "female", "other"]:
-                raise serializers.ValidationError({
-                    "gender": "Gender must be Male, Female, or Other."
-                })
-            data["gender"] = gender
-    
-        # ---------- PERCENTAGE ----------
-        percentage = data.get("percentage")
-        if percentage is not None:
-            try:
-                percentage = float(percentage)
-                if percentage < 0 or percentage > 100:
-                    raise serializers.ValidationError({
-                        "percentage": "Percentage must be between 0 and 100."
-                    })
-                data["percentage"] = percentage
-            except (ValueError, TypeError):
-                raise serializers.ValidationError({
-                    "percentage": "Percentage must be a valid number."
-                })
-    
-        # ---------- YEAR OF PASSING ----------
-        year = data.get("year_of_passing")
-        if year:
-            if not re.fullmatch(r"\d{4}", str(year)):
-                raise serializers.ValidationError({
-                    "year_of_passing": "Year of passing must be a 4-digit year."
-                })
-            current_year = datetime.now().year
-            if year < 2000 or year > current_year:
-                raise serializers.ValidationError({
-                    "year_of_passing": "Year of passing must be between 2000 and the current year."
-            })
-    
-        return data
     
     
 
