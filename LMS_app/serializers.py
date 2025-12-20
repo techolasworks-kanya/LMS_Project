@@ -77,10 +77,14 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
             guardian_name = guardian_name[0] if guardian_name else ''
         guardian_name = str(guardian_name).strip()
 
-        if len(guardian_name) > 40 or len(guardian_name) < 3:
-            raise serializers.ValidationError({
-                "message": "Guardian name should be between 3 to 40 characters."
-            })
+        if guardian_name: 
+            if len(guardian_name) < 3 or len(guardian_name) > 40:
+                raise serializers.ValidationError({
+                    "message": "Guardian name should be between 3 to 40 characters."
+                })
+            data['guardian_name'] = guardian_name.title()
+        else:
+            data['guardian_name'] = None
         
         #=== Guardian occupation ===
 
@@ -187,9 +191,9 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
         address = str(address).strip()
 
         if address:
-            if len(address) < 15:
+            if len(address) < 5:
                 raise serializers.ValidationError({
-                    "message": "Address is too short. Please provide complete address (minimum 15 characters)."
+                    "message": "Address is too short. Please provide complete address (minimum 5 characters)."
                 })
             if len(address) > 300:
                 raise serializers.ValidationError({
@@ -533,59 +537,96 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
         if len(student_name) < 3 or len(student_name) > 100:
             raise serializers.ValidationError({'student_name': "student name should be between 3 to 100 characters."})
         
-        guardian_name = validated_data.get('guardian_name', instance.guardian_name)
-
-        if len(guardian_name) < 3 or len(guardian_name) > 100:
-            raise serializers.ValidationError({'guardian_name': "guardian name should be between 3 to 100 characters."})
+        if 'guardian_name' in validated_data:
+            guardian_name = validated_data.get('guardian_name', '').strip()
+            # Allow blank/None for guardian_name
+            if guardian_name:  # only validate if not empty
+                if not (3 <= len(guardian_name) <= 100):
+                    raise serializers.ValidationError({
+                        'guardian_name': "Guardian name should be between 3 to 100 characters."
+                    })
+                validated_data['guardian_name'] = guardian_name.title()
+            else:
+                validated_data['guardian_name'] = None
         
-        occupation = validated_data.get('occupation', instance.occupation)
-
-        if len(occupation) < 3 or len(occupation) > 100:
-            raise serializers.ValidationError({'occupation': "Occupation should be between 3 to 100 characters."})
+        if 'occupation' in validated_data:
+            occupation = validated_data.get('occupation', '').strip()
+            if occupation:  # only validate if provided and not empty
+                if not (3 <= len(occupation) <= 100):
+                    raise serializers.ValidationError({
+                        'occupation': "Occupation should be between 3 to 100 characters."
+                    })
+                validated_data['occupation'] = occupation.title()
+            else:
+                validated_data['occupation'] = None
         
         phone1 = validated_data.get('phone1', instance.phone1)
 
         if len(phone1) < 10 or len(phone1) > 15:
             raise serializers.ValidationError({'phone1': "Phone number should be between 10 to 15 characters."})
         
-        phone2 = validated_data.get('phone2', instance.phone2)
-
-        if len(phone2) < 10 or len(phone2) > 15:
-            raise serializers.ValidationError({'phone2': "Phone number should be between 10 to 15 characters."})
+        if 'phone2' in validated_data:
+            phone2 = str(validated_data['phone2']).strip()
+            if phone2 and not (10 <= len(phone2) <= 15):  # allow empty phone2
+                raise serializers.ValidationError({
+                    'phone2': "Secondary phone number should be between 10 to 15 digits."
+                })
         
-        email = validated_data.get('email', instance.email)
-
-        if len(email) < 5 or len(email) > 150:
-            raise serializers.ValidationError({'email': "Email should be between 5 to 150 characters."})
-        
-        address = validated_data.get('address', instance.address)
-
-        if len(address) < 5 or len(address) > 150:
-            raise serializers.ValidationError({'address': "Address should be between 5 to 150 characters."})
-        
-        qualification = validated_data.get('educational_qualification', instance.educational_qualification)
-
-        if len(qualification) < 3 or len(qualification) > 150:
-            raise serializers.ValidationError({'educational_qualification': "Qualification should be between 3 to 150 characters."})
-        
-        university_college = validated_data.get('university_college', instance.university_college)
-
-        if len(university_college) < 3 or len(university_college) > 150:
-            raise serializers.ValidationError({'university_college': "University or College should be between 3 to 150 characters."})
-    #persentage  need to be in between 0-100 
-        percentage = validated_data.get('percentage', instance.percentage)
-
-        if percentage < 0 or percentage > 100:
-            raise serializers.ValidationError({'percentage': "Percentage should be between 0 to 100."})
-
+        if 'email' in validated_data:
+            email = validated_data['email'].strip()
+            if email and not (5 <= len(email) <= 150):
+                raise serializers.ValidationError({
+                    'email': "Email should be between 5 to 150 characters."
+                })
+        if 'address' in validated_data:
+            address = validated_data['address'].strip()
+            if not (5 <= len(address) <= 150):
+                raise serializers.ValidationError({
+                    'address': "Address should be between 5 to 150 characters."
+                })
+        if 'educational_qualification' in validated_data:
+            qual = validated_data['educational_qualification'].strip()
+            if not (3 <= len(qual) <= 150):
+                raise serializers.ValidationError({
+                    'educational_qualification': "Qualification should be between 3 to 150 characters."
+                })
+            
+        if 'university_college' in validated_data:
+            uni = validated_data.get('university_college', '').strip()
+            if uni and not (3 <= len(uni) <= 150):
+                raise serializers.ValidationError({
+                    'university_college': "University/College should be between 3 to 150 characters."
+                })
+    #persentage  need to be in between 0-100 ,and #percentage null can be accepted
        
-    #year of passig should be in betwween 1930 to  current year
-        year_of_passing = validated_data.get('year_of_passing', instance.year_of_passing)
-
-        if year_of_passing < 1930 or year_of_passing > date.today().year:
-            raise serializers.ValidationError({'year_of_passing': "Year of passing should be between 1930 to current year."})
-        return super().update(instance, validated_data)
-    
+                    
+            if 'percentage' in validated_data:
+                percentage_raw = validated_data['percentage']
+                
+                if percentage_raw is None:
+                    validated_data['percentage'] = None
+                else:
+                    try:
+                        percentage = float(percentage_raw)
+                        if not (0 <= percentage <= 100):
+                            raise serializers.ValidationError({
+                                'percentage': "Percentage should be between 0 and 100."
+                            })
+                        from decimal import Decimal
+                        validated_data['percentage'] = Decimal(str(round(percentage, 2)))
+                    except (ValueError, TypeError):
+                        raise serializers.ValidationError({
+                            'percentage': "Percentage must be a valid number."
+                        })
+            # if 'year_of_passing' in validated_data:
+            #     year = validated_data['year_of_passing']
+            #     current_year = date.today().year
+            #     if not (1930 <= year <= current_year):
+            #         raise serializers.ValidationError({
+            #             'year_of_passing': "Year of passing should be between 1930 and {current_year}."
+            #         })
+                    # return super().update(instance, validated_data)
+            return super().update(instance, validated_data)
     
     
     
