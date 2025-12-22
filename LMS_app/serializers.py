@@ -35,7 +35,7 @@ class CourseCreateSerializer(serializers.ModelSerializer):
 class CourseListSerializer(serializers.ModelSerializer):
     class Meta:
         model = course
-        fields = ['course_name', 'duration', 'course_fee']
+        fields = ['course_name', 'duration', 'course_fee','number_of_installments']
         
 from rest_framework.exceptions import ValidationError  
 
@@ -131,7 +131,6 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     "message": "Phone number is too long. Maximum 15 characters allowed."
                 })
-            #no special charactors allow in the phone number field
             if phone1 and not phone1.replace('+', '').replace('-', '').replace(' ', '').isdigit():
                 raise serializers.ValidationError({
                     "message": "Please provide a valid phone number."   
@@ -281,7 +280,7 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
         else:
             data['year_of_passing'] = None
 
-        # === Percentage ===
+        # === Percentage === null value also need to accept
         percentage = data.get('percentage', '')
         if isinstance(percentage, list):
             percentage = percentage[0] if percentage else ''
@@ -289,17 +288,34 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
         if percentage:
             try:
                 perc_float = float(percentage)
-                if perc_float < 0 or perc_float > 100:
+                if perc_float <=0 or perc_float >= 100:
                     raise serializers.ValidationError({
-                        "message": "Percentage must be between 0 and 100."
+                        "percentage": "Percentage must be between 0 and 100."
+                        
                     })
-                data['percentage'] = Decimal(str(perc_float))
+                # data['percentage'] = Decimal(str(perc_float))
             except ValueError:
                 raise serializers.ValidationError({
-                    "message": "Percentage must be a valid number."
+                    "percentage": "Percentage must be a valid number."
+                    
                 })
-
-    
+            
+        # if isinstance(percentage, list):
+        #     percentage = percentage[0] if percentage else ''
+        # percentage = str(percentage).strip()
+        # if percentage:
+        #     try:
+        #         perc_float = float(percentage)
+        #         if perc_float <=0 or perc_float >= 100:
+        #             raise serializers.ValidationError({
+        #                 "message": "Percentage must be between 0 and 100."
+        #             })
+        #         data['percentage'] = Decimal(str(perc_float))
+        #     except ValueError:
+        #         raise serializers.ValidationError({
+        #             "message": "Percentage must be a valid number."
+        #         })
+        
         # === Course interested ===
         raw_course = data.get('course_interested')
 
@@ -505,11 +521,10 @@ def normalize_whitespace(value):
     return re.sub(r"\s+", " ", value).strip()
 
 class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
-    course_interested = serializers.CharField(
-        required=False, allow_blank=True, write_only=True
-    )
+    course_interested = serializers.CharField(required=False, allow_blank=True)
     email = serializers.CharField(max_length=150,allow_blank=True,required=False,)
     student_name = serializers.CharField(max_length=100,allow_blank=True,required=False,)
+    address = serializers.CharField(max_length=300, allow_blank=True,  allow_null=True,required=False)
 
    
 
@@ -551,7 +566,7 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
         
         if 'occupation' in validated_data:
             occupation = validated_data.get('occupation', '').strip()
-            if occupation:  # only validate if provided and not empty
+            if occupation: 
                 if not (3 <= len(occupation) <= 100):
                     raise serializers.ValidationError({
                         'occupation': "Occupation should be between 3 to 100 characters."
@@ -559,6 +574,9 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
                 validated_data['occupation'] = occupation.title()
             else:
                 validated_data['occupation'] = None
+
+        
+        
         
         phone1 = validated_data.get('phone1', instance.phone1)
 
@@ -578,12 +596,21 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'email': "Email should be between 5 to 150 characters."
                 })
-        if 'address' in validated_data:
-            address = validated_data['address'].strip()
-            if not (5 <= len(address) <= 150):
-                raise serializers.ValidationError({
-                    'address': "Address should be between 5 to 150 characters."
-                })
+            if 'address' in validated_data:
+                address_value = validated_data.get('address')
+                if address_value is not None:  
+                    address_str = str(address_value).strip()
+                    if address_str: 
+                        if not (5 <= len(address_str) <= 300):
+                            raise serializers.ValidationError({
+                                'address': "Address should be between 5 to 300 characters."
+                            })
+                    # If empty string or null → save as None
+                    validated_data['address'] = address_str if address_str else None
+                else:
+                    validated_data['address'] = None
+        
+            
         if 'educational_qualification' in validated_data:
             qual = validated_data['educational_qualification'].strip()
             if not (3 <= len(qual) <= 150):
@@ -618,6 +645,9 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
                         raise serializers.ValidationError({
                             'percentage': "Percentage must be a valid number."
                         })
+                    
+                    
+                
             # if 'year_of_passing' in validated_data:
             #     year = validated_data['year_of_passing']
             #     current_year = date.today().year
@@ -626,6 +656,8 @@ class EnquiryNestedUpdateSerializer(serializers.ModelSerializer):
             #             'year_of_passing': "Year of passing should be between 1930 and {current_year}."
             #         })
                     # return super().update(instance, validated_data)
+
+
             return super().update(instance, validated_data)
     
     
@@ -1184,7 +1216,6 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
         return admission
     
   
-
 
 
 

@@ -123,7 +123,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'DATA_LMS',        #
+        'NAME': 'DATA_LMS',        
         'USER': 'postgres',      
         'PASSWORD': 'postgres',  
         'HOST': 'localhost',

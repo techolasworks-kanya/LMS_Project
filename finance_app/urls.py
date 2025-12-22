@@ -4,4 +4,5 @@ from LMS_app.views import *
 
 urlpatterns = [
     path('api/get-data-for-finance', views.GetDataForFinance.as_view(), name='finance-data'),
+    
 ]

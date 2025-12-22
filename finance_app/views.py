@@ -24,6 +24,6 @@ class GetDataForFinance(APIView):
 
         return Response({
             'data': serializer.data,
-            # 'message': 'Students who have paid admission fee',
+            'message': 'Students who have paid admission fee',
             'count': paid_admissions.count()
         })
