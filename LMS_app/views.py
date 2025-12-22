@@ -322,32 +322,58 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
     
 
 #todays enquirires and count  - if zero enqur
+
+
+# class TodayEnquiryListView(generics.ListAPIView):
+#     permission_classes = [AllowAny]
+#     serializer_class = EnquiryListSerializer
+
+#     def get_queryset(self):
+#         today = timezone.now().date()
+#         today_count  = Enquiry.objects.filter(enquiry_date=today).count()
+#         return Enquiry.objects.filter(
+#             enquiry_date=today
+#         ).select_related('course_interested').order_by('-id')
+#     def list(self, request, *args, **kwargs):
+#         queryset = self.get_queryset()
+#         serializer = self.get_serializer(queryset, many=True)
+#         today_count  = Enquiry.objects.filter(enquiry_date=timezone.now().date()).count()
+#         return Response({
+#             "today_enquiries_count": today_count,
+#             "data": serializer.data
+#         })
+
+
+
+#     # def get_queryset(self):
+#     #     today = timezone.now().date()
+#     #     return Enquiry.objects.filter(
+#     #         enquiry_date=today
+#     #     ).select_related('course_interested').order_by('-id')
+
 class TodayEnquiryListView(generics.ListAPIView):
     permission_classes = [AllowAny]
-    serializer_class = EnquiryListSerializer
+    serializer_class = EnquiryListSerializer  # or TodaysEnequirySerializer
 
     def get_queryset(self):
         today = timezone.now().date()
-        today_count  = Enquiry.objects.filter(enquiry_date=today).count()
         return Enquiry.objects.filter(
-            enquiry_date=today
+            enquiry_date=today,
+            is_archived=False  # Exclude manual admission placeholders
         ).select_related('course_interested').order_by('-id')
+
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
-        today_count  = Enquiry.objects.filter(enquiry_date=timezone.now().date()).count()
+        today_count = Enquiry.objects.filter(
+            enquiry_date=timezone.now().date(),
+            is_archived=False
+        ).count()
         return Response({
             "today_enquiries_count": today_count,
             "data": serializer.data
         })
 
-
-
-    # def get_queryset(self):
-    #     today = timezone.now().date()
-    #     return Enquiry.objects.filter(
-    #         enquiry_date=today
-    #     ).select_related('course_interested').order_by('-id')
 
 
 from django.db.models import OuterRef, Exists, Subquery

@@ -110,7 +110,6 @@ class EnquiryCreateSerializer(serializers.ModelSerializer):
         phone1 = str(phone1).strip() if phone1 else None
 
 
-
         email = data.get('email')
         if isinstance(email, list):
             email = email[0] if email else None
@@ -426,6 +425,8 @@ class TodaysEnequirySerializer(serializers.ModelSerializer):
             'id', 'student_name', 'enquiry_date',
             'course_name', 'heard_from'
         ]
+
+
 
 #Admission Serializer
 
@@ -936,6 +937,279 @@ class AdmissionCreateSerializer(serializers.ModelSerializer):
 
 from django.shortcuts import get_object_or_404
 
+# class AdmissionUpdateSerializer(serializers.ModelSerializer):
+#     enquiry_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+#     student_name = serializers.CharField()
+#     date_of_birth = serializers.DateField(required=False, allow_null=True)
+#     guardian_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+#     guardian_occupation = serializers.CharField(max_length=100, required=False, allow_blank=True)
+#     phone1 = serializers.CharField(max_length=15)
+#     phone2 = serializers.CharField(max_length=15, required=False, allow_blank=True)
+#     email = serializers.EmailField(required=False, allow_blank=True)
+#     address = serializers.CharField(required=False, allow_blank=True)
+#     gender = serializers.ChoiceField(choices=['male', 'female', 'other'], required=False)
+#     educational_qualification = serializers.CharField(max_length=200, required=False)
+#     university_college = serializers.CharField(max_length=200, required=False, allow_blank=True)
+#     percentage = serializers.FloatField(required=False, allow_null=True)
+#     year_of_passing = serializers.IntegerField(required=False, allow_null=True)
+#     flexible_timings = serializers.CharField(max_length=10, required=False, allow_blank=True)
+#     class_schedule = serializers.CharField(max_length=100, required=False, allow_blank=True)
+   
+    
+#     student_photo = serializers.ImageField(required=False, allow_null=True)
+#     educational_certificate = serializers.FileField(required=False, allow_null=True)
+#     aadhaar_copy = serializers.FileField(required=False, allow_null=True)
+    
+#     course_interested = serializers.CharField(max_length=100, write_only=True, required=True, help_text="Accept course ID (number) or course name (string)")
+#     course_fee = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
+#     admission_fee = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True)
+
+#     class Meta:
+#         model = Admission
+#         fields = [
+#             'id', 'enquiry_id', 'student_name', 'date_of_birth', 'guardian_name','guardian_occupation',
+#             'phone1', 'phone2', 'email', 'address', 'gender',
+#             'educational_qualification', 'university_college', 'percentage', 'year_of_passing',
+#             'course_interested','course_fee','student_photo', 'aadhaar_number', 'educational_certificate', 'class_timing', 
+#             'interested_in_nactet', 'status','flexible_timings','class_timing','nactet_fee','class_schedule','admission_fee','aadhaar_copy'
+#         ]
+
+#     def to_internal_value(self, data):
+#         data = super().to_internal_value(data)
+#         raw_course = data.pop('course_interested', None)
+#         if raw_course is None:
+#             raise serializers.ValidationError({"course_interested": "This field is required."})
+#         raw_course = str(raw_course).strip()
+#         if raw_course.isdigit():
+#             course_id = int(raw_course)
+#             course_obj = get_object_or_404(course, id=course_id)
+#         else:
+#             course_obj = get_object_or_404(course, course_name__iexact=raw_course)
+#         data['course_interested'] = course_obj
+#         return data
+
+        
+
+#     def get_date_of_birth(self, obj):
+#         if obj.enquiry and obj.enquiry.date_of_birth:
+#             return obj.enquiry.date_of_birth.strftime('%d-%m-%Y')
+#         return None
+    
+#     def update(self, instance, validated_data):
+#         course_obj = validated_data.pop('course_interested', None)
+        
+#         student_photo = validated_data.pop('student_photo', None)
+#         educational_certificate = validated_data.pop('educational_certificate', None)
+#         adhaar_copy = validated_data.pop('aadhaar_copy', None)
+    
+        
+#         if student_photo is not None:
+#             instance.student_photo = student_photo
+#         if educational_certificate is not None:
+#             instance.educational_certificate = educational_certificate
+
+#         if adhaar_copy is not None:
+#             instance.aadhaar_copy = adhaar_copy
+
+#         enquiry = instance.enquiry
+#         if enquiry:
+#             enquiry_fields = [
+#                 'student_name', 'date_of_birth', 'guardian_name',
+#                 'phone1', 'phone2', 'email', 'address', 'gender',
+#                 'educational_qualification', 'university_college', 'percentage',
+#                 'year_of_passing', 
+#                 # 'flexible_timings',
+#             ]
+#             for field in enquiry_fields:
+#                 if field in validated_data:
+#                     setattr(enquiry, field, validated_data.pop(field))
+            
+#             guardian_occupation = validated_data.pop('guardian_occupation', None)
+#             if guardian_occupation is not None:
+#                 enquiry.occupation = guardian_occupation
+                
+#                 followup = FollowUps.objects.filter(enquiry=enquiry).first()
+#                 if followup:
+#                     followup.guardian_occupation = guardian_occupation
+#                     followup.save()
+#                 else:
+#                     FollowUps.objects.create(
+#                         enquiry=enquiry,
+#                         enquiry_source=enquiry.heard_from,
+#                         guardian_occupation=guardian_occupation,
+#                         status='new'
+#                     )
+                    
+#             if course_obj:
+#                 enquiry.course_interested = course_obj
+#             enquiry.save()
+
+#         safe_fields = ['class_schedule', 'class_timing', 
+#                     'interested_in_nactet', 'aadhaar_number', 'status','admission_fee','aadhaar_copy']
+#         for field in safe_fields:
+#             if field in validated_data:
+#                 setattr(instance, field, validated_data.pop(field))
+                
+#         if course_obj:
+#             instance.course = course_obj
+            
+#         instance.nactet_fee = 1000.00 if instance.interested_in_nactet == 'yes' else 0.00
+        
+#         instance.save()
+#         return instance
+
+
+
+#     def validate(self, data):
+#         date_of_birth = data.get('date_of_birth')
+#         if date_of_birth:
+#             if date_of_birth > date.today():
+#                 raise serializers.ValidationError({
+#                     "date_of_birth": "Date of birth cannot be in the future."
+#                 })
+#             elif date_of_birth.year < 1930:
+#                 raise serializers.ValidationError({
+#                     "date_of_birth": "Date of birth cannot be before 1930."
+#                 })
+#         student_name = data.get('student_name', '').strip()
+#         if len(student_name) < 3 or len(student_name) > 100:
+#             raise serializers.ValidationError({
+#                 "student_name": "Student name must be between 3 and 100 characters."
+#             })
+        
+#         guardian_name = data.get('guardian_name', '').strip()
+#         if guardian_name and (len(guardian_name) < 3 or len(guardian_name) > 100):
+#             raise serializers.ValidationError({
+#                 "guardian_name": "Guardian name must be between 3 and 100 characters."
+#             })
+
+#         guardian_occupation = data.get('guardian_occupation', '').strip() 
+#         if guardian_occupation and (len(guardian_occupation) < 2 or len(guardian_occupation) > 100):
+#             raise serializers.ValidationError({
+#                 "guardian_occupation": "Guardian occupation must be between 2 and 100 characters."
+                
+#             })
+        
+#         contact_number2 = data.get('phone2', '').strip()
+#         if contact_number2 and len(contact_number2) < 7 or len(contact_number2) > 15:
+#             raise serializers.ValidationError({
+#                 "phone2": "Contact number 2 must be between 7 and 15 digits."
+#             })
+#         email = data.get('email', '').strip()
+#         if email:
+#             if len(email) < 5:
+#                 raise serializers.ValidationError({
+#                     "email": "Email address is too short. Please provide a valid email."
+#                 })
+#             if len(email) > 100:
+#                 raise serializers.ValidationError({
+#                     "email": "Email address is too long. Maximum 100 characters allowed."
+#                 })
+#             if not re.match(r"^[\w\.\+\-']+@[\w\-\.]+\.[a-zA-Z]{2,}$", email):
+#                 raise serializers.ValidationError({
+#                     "email": "Please enter a valid email address (e.g.) 3l0M5@example.com"
+#                 })
+
+#         address = data.get('address', '').strip()
+#         if address and (len(address) < 5 or len(address) > 300):
+#             raise serializers.ValidationError({
+#                 "address": "Address must be between 5 and 300 characters."
+#             })
+#         qualification = data.get('educational_qualification', '').strip()
+#         if qualification and (len(qualification) < 3 or len(qualification) > 100):
+#             raise serializers.ValidationError({
+#                 "educational_qualification": "Educational qualification must be between 3 and 100 characters."
+                
+#             })
+#         university = data.get('university_college', '').strip()
+#         if university and (len(university) < 3 or len(university) > 100):
+#             raise serializers.ValidationError({
+#                 "university_college": "University/College name must be between 3 and 100"
+#             })
+#         year_of_passing = data.get('year_of_passing')
+#         if year_of_passing:
+#             if year_of_passing < 1930 or year_of_passing > date.today().year:
+#                 raise serializers.ValidationError({
+#                     "year_of_passing": "Year of passing must be between 1930 and current year."
+        
+#                 })
+#         return data
+
+#     def create(self, validated_data):
+#         course_obj = validated_data.pop('course_interested')
+#         force_under_review = self.context.get('force_under_review', False) or validated_data.pop('force_under_review', False)
+        
+#         admission_fields = {
+#             'class_schedule': validated_data.pop('class_schedule', None),
+#             'class_timing': validated_data.pop('class_timing', None),
+#             'interested_in_nactet': validated_data.pop('interested_in_nactet', 'no'),
+#             'status': 'under review' if force_under_review else validated_data.pop('status', 'pending'),
+#             'aadhaar_number': validated_data.pop('aadhaar_number', None),
+#             'student_photo': validated_data.pop('student_photo', None),
+#             'educational_certificate': validated_data.pop('educational_certificate', None),
+#             'admission_fee': validated_data.pop('admission_fee', None),
+#             'aadhaar_copy': validated_data.pop('aadhaar_copy', None),
+#         }
+        
+#         if not validated_data.get('enquiry_id'):
+#             guardian_occupation = validated_data.pop('guardian_occupation', None)
+            
+#             enquiry_data = {
+#                 'student_name': validated_data.pop('student_name'),
+#                 'date_of_birth': validated_data.pop('date_of_birth', None),
+#                 'guardian_name': validated_data.pop('guardian_name', ''),
+#                 'occupation': guardian_occupation, 
+#                 'phone1': validated_data.pop('phone1'),
+#                 'phone2': validated_data.pop('phone2', ''),
+#                 'email': validated_data.pop('email', ''),
+#                 'address': validated_data.pop('address', ''),
+#                 'gender': validated_data.pop('gender', 'other'),
+#                 'educational_qualification': validated_data.pop('educational_qualification', ''),
+#                 'university_college': validated_data.pop('university_college', ''),
+#                 'percentage': validated_data.pop('percentage', None),
+#                 'year_of_passing': validated_data.pop('year_of_passing', None),
+#                 'flexible_timings': validated_data.pop('flexible_timings', None),
+#                 'course_interested': course_obj,
+                
+
+
+#             }
+#             enquiry_data = {k: v for k, v in enquiry_data.items() if v is not None}
+#             enquiry = Enquiry.objects.create(**enquiry_data)
+            
+           
+#         else:
+#             enquiry = get_object_or_404(Enquiry, id=validated_data.pop('enquiry_id'))
+#             guardian_occupation = validated_data.pop('guardian_occupation', None)
+#             if guardian_occupation is not None:
+#                 enquiry.occupation = guardian_occupation
+#                 enquiry.save()
+                
+#                 followup, created = FollowUps.objects.get_or_create(
+#                     enquiry=enquiry,
+#                     defaults={
+#                         'enquiry_source': enquiry.heard_from,
+#                         'guardian_occupation': guardian_occupation,
+#                         'status': 'new'
+#                     }
+#                 )
+#                 if not created:
+#                     followup.guardian_occupation = guardian_occupation
+#                     followup.save()
+        
+      
+#         admission_data = {k: v for k, v in admission_fields.items() if v is not None}
+#         admission_data.update({
+#             'enquiry': enquiry,
+#             'course': course_obj,
+#         })
+        
+#         admission = Admission(**admission_data)
+#         if force_under_review:
+#             admission.status = 'under review'
+#             admission.save()
+#         return admission
+    
 class AdmissionUpdateSerializer(serializers.ModelSerializer):
     enquiry_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     student_name = serializers.CharField()
@@ -954,7 +1228,6 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
     flexible_timings = serializers.CharField(max_length=10, required=False, allow_blank=True)
     class_schedule = serializers.CharField(max_length=100, required=False, allow_blank=True)
    
-    
     student_photo = serializers.ImageField(required=False, allow_null=True)
     educational_certificate = serializers.FileField(required=False, allow_null=True)
     aadhaar_copy = serializers.FileField(required=False, allow_null=True)
@@ -987,8 +1260,6 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
         data['course_interested'] = course_obj
         return data
 
-        
-
     def get_date_of_birth(self, obj):
         if obj.enquiry and obj.enquiry.date_of_birth:
             return obj.enquiry.date_of_birth.strftime('%d-%m-%Y')
@@ -999,16 +1270,14 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
         
         student_photo = validated_data.pop('student_photo', None)
         educational_certificate = validated_data.pop('educational_certificate', None)
-        adhaar_copy = validated_data.pop('aadhaar_copy', None)
+        aadhaar_copy = validated_data.pop('aadhaar_copy', None)
     
-        
         if student_photo is not None:
             instance.student_photo = student_photo
         if educational_certificate is not None:
             instance.educational_certificate = educational_certificate
-
-        if adhaar_copy is not None:
-            instance.aadhaar_copy = adhaar_copy
+        if aadhaar_copy is not None:
+            instance.aadhaar_copy = aadhaar_copy
 
         enquiry = instance.enquiry
         if enquiry:
@@ -1017,7 +1286,6 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
                 'phone1', 'phone2', 'email', 'address', 'gender',
                 'educational_qualification', 'university_college', 'percentage',
                 'year_of_passing', 
-                # 'flexible_timings',
             ]
             for field in enquiry_fields:
                 if field in validated_data:
@@ -1057,8 +1325,6 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
         instance.save()
         return instance
 
-
-
     def validate(self, data):
         date_of_birth = data.get('date_of_birth')
         if date_of_birth:
@@ -1086,11 +1352,10 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
         if guardian_occupation and (len(guardian_occupation) < 2 or len(guardian_occupation) > 100):
             raise serializers.ValidationError({
                 "guardian_occupation": "Guardian occupation must be between 2 and 100 characters."
-                
             })
         
         contact_number2 = data.get('phone2', '').strip()
-        if contact_number2 and len(contact_number2) < 7 or len(contact_number2) > 15:
+        if contact_number2 and (len(contact_number2) < 7 or len(contact_number2) > 15):
             raise serializers.ValidationError({
                 "phone2": "Contact number 2 must be between 7 and 15 digits."
             })
@@ -1118,7 +1383,6 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
         if qualification and (len(qualification) < 3 or len(qualification) > 100):
             raise serializers.ValidationError({
                 "educational_qualification": "Educational qualification must be between 3 and 100 characters."
-                
             })
         university = data.get('university_college', '').strip()
         if university and (len(university) < 3 or len(university) > 100):
@@ -1130,7 +1394,6 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
             if year_of_passing < 1930 or year_of_passing > date.today().year:
                 raise serializers.ValidationError({
                     "year_of_passing": "Year of passing must be between 1930 and current year."
-        
                 })
         return data
 
@@ -1157,7 +1420,7 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
                 'student_name': validated_data.pop('student_name'),
                 'date_of_birth': validated_data.pop('date_of_birth', None),
                 'guardian_name': validated_data.pop('guardian_name', ''),
-                'occupation': guardian_occupation, 
+                'occupation': guardian_occupation,
                 'phone1': validated_data.pop('phone1'),
                 'phone2': validated_data.pop('phone2', ''),
                 'email': validated_data.pop('email', ''),
@@ -1169,20 +1432,14 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
                 'year_of_passing': validated_data.pop('year_of_passing', None),
                 'flexible_timings': validated_data.pop('flexible_timings', None),
                 'course_interested': course_obj,
-                
-
-
+                'heard_from': 'walk in',  # Required field, safe default
+                'is_archived': True,      # CRITICAL: Prevents showing in enquiry lists
             }
+            # Remove None values to avoid overriding defaults
             enquiry_data = {k: v for k, v in enquiry_data.items() if v is not None}
             enquiry = Enquiry.objects.create(**enquiry_data)
             
-            # if guardian_occupation:
-            #     FollowUps.objects.create(
-            #         enquiry=enquiry,
-            #         enquiry_source=enquiry.heard_from,
-            #         guardian_occupation=guardian_occupation,
-            #         status='new'
-            #     )
+            # No need to create FollowUp for archived manual admissions
         else:
             enquiry = get_object_or_404(Enquiry, id=validated_data.pop('enquiry_id'))
             guardian_occupation = validated_data.pop('guardian_occupation', None)
@@ -1202,7 +1459,6 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
                     followup.guardian_occupation = guardian_occupation
                     followup.save()
         
-      
         admission_data = {k: v for k, v in admission_fields.items() if v is not None}
         admission_data.update({
             'enquiry': enquiry,
@@ -1210,12 +1466,8 @@ class AdmissionUpdateSerializer(serializers.ModelSerializer):
         })
         
         admission = Admission(**admission_data)
-        if force_under_review:
-            admission.status = 'under review'
-            admission.save()
-        return admission
-    
-  
+        admission.save()  # Let model's save() handle nactet_fee
+        return admission 
 
 
 
