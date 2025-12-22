@@ -36,7 +36,7 @@ class course(models.Model):
     course_fee = models.DecimalField(max_digits=10, decimal_places=2,null=True, blank=True)
     certfication = models.ForeignKey(certfication, on_delete=models.CASCADE, null=True, blank=True)
     course_syllabus=models.FileField(upload_to='uploads/', null=True, blank=True) 
-    number_of_installments = models.IntegerField(null=True, blank=True)
+    # number_of_installments = models.IntegerField(null=True, blank=True)
 
     def __str__(self):
         return self.course_name
