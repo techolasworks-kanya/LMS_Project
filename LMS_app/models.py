@@ -36,7 +36,7 @@ class course(models.Model):
     course_fee = models.DecimalField(max_digits=10, decimal_places=2,null=True, blank=True)
     certfication = models.ForeignKey(certfication, on_delete=models.CASCADE, null=True, blank=True)
     course_syllabus=models.FileField(upload_to='uploads/', null=True, blank=True) 
-    # number_of_installments = models.IntegerField(null=True, blank=True)
+    number_of_installments = models.IntegerField(null=True, blank=True)
 
     def __str__(self):
         return self.course_name
@@ -267,6 +267,7 @@ class Admission(models.Model):
         super().save(*args, **kwargs)
 
 
+
 class NotInterestedLead(models.Model):
     followup = models.ForeignKey(FollowUps, on_delete=models.SET_NULL,null=True, blank=True,related_name='not_interested_lead')
     enquiry = models.ForeignKey(Enquiry, on_delete=models.CASCADE,related_name='not_interested_records')
@@ -311,6 +312,7 @@ class Notification(models.Model):
 
 
 
+
 class Payment(models.Model):
     PAYMENT_MODE_CHOICES = [
         ('cash', 'cash'),
@@ -320,13 +322,7 @@ class Payment(models.Model):
     ]
 
     admission = models.ForeignKey(Admission, on_delete=models.CASCADE, related_name='payments')
-    PAYMENT_STRUCTURE_CHOICES = [
-        ('One time', 'One time'),
-        ('installments', 'installments'),
-       
-    ]
-
-    payment_structure = models.CharField(max_length=20,choices=PAYMENT_STRUCTURE_CHOICES,null=True,blank=True,help_text="How student will pay fees")
+   
     total_fee_amount = models.DecimalField(max_digits=10, decimal_places=2)
     payment_mode = models.CharField(max_length=20, choices=PAYMENT_MODE_CHOICES)
     transaction_id = models.CharField(max_length=100, blank=True, null=True)

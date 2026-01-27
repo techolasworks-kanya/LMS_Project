@@ -65,9 +65,9 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=36500),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'ROTATE_REFRESH_TOKENS': True,
-    'AUTH_COOKIE': 'access_token',           # ← Read from cookie
-    'AUTH_COOKIE_REFRESH': 'refresh_token',  # ← Optional
-    'AUTH_COOKIE_SECURE': False,             # True in production
+    'AUTH_COOKIE': 'access_token',          
+    'AUTH_COOKIE_REFRESH': 'refresh_token',  
+    'AUTH_COOKIE_SECURE': False,            
     'AUTH_COOKIE_HTTP_ONLY': True,
     'AUTH_COOKIE_SAME_SITE': 'Lax',
 }
@@ -110,9 +110,21 @@ WSGI_APPLICATION = 'LMS.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
-
 import dj_database_url
 import os
+from dotenv import load_dotenv
+import razorpay  # pyright: ignore[reportMissingImports]
+load_dotenv()  
+
+
+
+#Razorpay Configuration
+
+
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
+
+RAZORPAY_CLIENT = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET)) if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET else None
 
 
 
@@ -197,6 +209,12 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+
+
+
+
 
 
 

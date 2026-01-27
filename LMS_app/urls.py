@@ -31,6 +31,8 @@ urlpatterns = [
     path('api/enquiry-status-counts', views.EnquiryStatusListView.as_view(), name='enquiry-status-counts'),
     path('api/enquiries/export-excel', views.ExportEnquiryExcel.as_view(), name='export-enquiry-excel'),
 
+    #facebook leads API endpoints
+    # path('api/facebook-leads', views.FacebookLeadWebhookView.as_view(), name='facebook-lead-list-create'),
 #folloup actions API endpoints
     path('api/followups', views.FollowUpListCreateView.as_view(), name='followup-list-create'),
     path('api/followups/<int:pk>', views.FollowUpDetailView.as_view(), name='followup-detail'),
@@ -77,6 +79,13 @@ urlpatterns = [
 
 #graphical representation of seleted courses in each admisssions
     path('api/admissions/course-counts', views.CourseAdmissionStatsView.as_view()),
+
+
+
+    
+
+
+
     
 
 ]

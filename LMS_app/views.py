@@ -324,32 +324,6 @@ class EnquiryListCreateView(generics.ListCreateAPIView):
 #todays enquirires and count  - if zero enqur
 
 
-# class TodayEnquiryListView(generics.ListAPIView):
-#     permission_classes = [AllowAny]
-#     serializer_class = EnquiryListSerializer
-
-#     def get_queryset(self):
-#         today = timezone.now().date()
-#         today_count  = Enquiry.objects.filter(enquiry_date=today).count()
-#         return Enquiry.objects.filter(
-#             enquiry_date=today
-#         ).select_related('course_interested').order_by('-id')
-#     def list(self, request, *args, **kwargs):
-#         queryset = self.get_queryset()
-#         serializer = self.get_serializer(queryset, many=True)
-#         today_count  = Enquiry.objects.filter(enquiry_date=timezone.now().date()).count()
-#         return Response({
-#             "today_enquiries_count": today_count,
-#             "data": serializer.data
-#         })
-
-
-
-#     # def get_queryset(self):
-#     #     today = timezone.now().date()
-#     #     return Enquiry.objects.filter(
-#     #         enquiry_date=today
-#     #     ).select_related('course_interested').order_by('-id')
 
 class TodayEnquiryListView(generics.ListAPIView):
     permission_classes = [AllowAny]
@@ -1058,12 +1032,14 @@ class ConversionStatsView(APIView):
         # === CURRENT MONTH ===
         current_enquiries = Enquiry.objects.filter(
             enquiry_date__month=current_month,
-            enquiry_date__year=current_year
+            enquiry_date__year=current_year,
+            is_archived=False     #change
         ).count()
 
         current_admissions = Admission.objects.filter(
             enquiry__enquiry_date__month=current_month,
-            enquiry__enquiry_date__year=current_year
+            enquiry__enquiry_date__year=current_year,
+            enquiry__is_archived=False
         ).count()
 
         current_rate = round((current_admissions / current_enquiries) * 100) if current_enquiries > 0 else 0
@@ -1071,12 +1047,14 @@ class ConversionStatsView(APIView):
         # === PREVIOUS MONTH ===
         prev_enquiries = Enquiry.objects.filter(
             enquiry_date__month=prev_month,
-            enquiry_date__year=prev_year
+            enquiry_date__year=prev_year,
+            is_archived=False
         ).count()
 
         prev_admissions = Admission.objects.filter(
             enquiry__enquiry_date__month=prev_month,
-            enquiry__enquiry_date__year=prev_year
+            enquiry__enquiry_date__year=prev_year,
+            enquiry__is_archived=False
         ).count()
 
         prev_rate = round((prev_admissions / prev_enquiries) * 100) if prev_enquiries > 0 else 0
@@ -1123,7 +1101,6 @@ class EnquirySourceStatsView(APIView):
 
         source_counts = Counter(enq.heard_from for enq in enquiries)
 
-        # Total enquiries of the month
         total = sum(source_counts.values())
 
         # Compute percentage + count
@@ -1627,7 +1604,7 @@ class PaymentCreateView(APIView):
             "student_name": admission.enquiry.student_name if admission.enquiry else "Unknown",
             "receipt_number": payment.receipt_number,
             "student_code": admission.student_code,
-            "payment_structure": payment.payment_structure,
+            # "payment_structure": payment.payment_structure,
             "payment_mode": payment.get_payment_mode_display(),
             "transaction_id": payment.transaction_id or "N/A",
             "course_name": admission.course.course_name if admission.course else "Not Selected",
@@ -1929,66 +1906,8 @@ class CourseAdmissionStatsView(APIView):
             "courses": courses_data
         })
 
-# # ==========================
 
-# course, created = course.objects.get_or_create(
-#     course_name="Data Science",
-#     defaults={
-#         'course_fee': 45000.00,
-#         'duration_months': 6
-#     }
-# )
-# # Now `course` is a real instance, not the class
 
-# print(f"Course ready: {course.course_name} (created={created})")
-
-# # Clear old test data (optional, safe)
-# Enquiry.objects.filter(student_name__icontains="Test Student").delete()
-# Admission.objects.filter(enquiry__student_name__icontains="Test Student").delete()
-
-# # # Helper to create enquiry N months back
-# def create_past_enquiry(months_back, name_prefix="Test Student"):
-#     target_date = date.today() - timedelta(days=30*months_back)
-#     return Enquiry.objects.create(
-#         student_name=f"{name_prefix} {months_back}M Ago",
-#         phone1="9999999999",
-#         educational_qualification="B.Tech",
-#         enquiry_date=target_date,
-#         course_interested=course,
-#         heard_from='walk in'
-#     )
-
-# # # Helper to create admission from enquiry
-# def convert_to_admission(enquiry, days_after_enquiry=3):
-#     admission_date = enquiry.enquiry_date + timedelta(days=days_after_enquiry)
-#     return Admission.objects.create(
-#         enquiry=enquiry,
-#         course=course,
-#         admission_date=admission_date,
-#         status='confirmed'
-#     )
-
-# # # === CREATE DATA FOR LAST 3 MONTHS ===
-
-# # # November 2025 (previous month if today is Dec 2025)
-# for i in range(1, 21):  # 20 enquiries in Nov
-#     enquiry = create_past_enquiry(months_back=1, name_prefix=f"Nov Student {i}")
-#     if i <= 12:  # 12 out of 20 converted → 60% conversion
-#         convert_to_admission(enquiry, days_after_enquiry=2)
-
-# # # October 2025 (2 months back)
-# for i in range(1, 16):  # 15 enquiries
-#     enquiry = create_past_enquiry(months_back=2, name_prefix=f"Oct Student {i}")
-#     if i <= 6:  # 6 converted → 40%
-#         convert_to_admission(enquiry, days_after_enquiry=4)
-
-# # # September 2025 (3 months back)
-# for i in range(1, 25):
-#     enquiry = create_past_enquiry(months_back=3, name_prefix=f"Sep Student {i}")
-#     if i <= 18:  # 18 converted → 72%
-#         convert_to_admission(enquiry, days_after_enquiry=1)
-
-# print("Demo data created successfully for previous months!")
 
 
 
